@@ -13,6 +13,7 @@ const PasswordRecoveryPage = lazy(() => import('../features/auth/PasswordRecover
 const MemoriesPage = lazy(() => import('../features/memories/MemoriesPage').then((module) => ({ default: module.MemoriesPage })));
 const AskPage = lazy(() => import('../features/ask/AskPage').then((module) => ({ default: module.AskPage })));
 const RememberPage = lazy(() => import('../features/remember/RememberPage').then((module) => ({ default: module.RememberPage })));
+const FamilyActivityPage = lazy(() => import('../features/admin/FamilyActivityPage').then((module) => ({ default: module.FamilyActivityPage })));
 
 export function App() {
   const [searchParams] = useSearchParams();
@@ -34,6 +35,7 @@ export function App() {
           <Route path="/history" element={<HistoryPage />} />
           <Route path="/lists" element={<ListsPage />} />
           <Route path="/calendar" element={<CalendarPage />} />
+          <Route path="/family-activity" element={<FamilyActivityPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

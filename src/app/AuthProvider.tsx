@@ -7,6 +7,8 @@ import { AuthContext } from './AuthContext';
 export function AuthProvider({ children }: PropsWithChildren) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(isSupabaseConfigured);
+  const [isGlobalAdmin, setIsGlobalAdmin] = useState(false);
+  const [adminRoleLoading, setAdminRoleLoading] = useState(false);
 
   useEffect(() => {
     if (!supabase) {
@@ -32,6 +34,29 @@ export function AuthProvider({ children }: PropsWithChildren) {
     };
   }, []);
 
-  const value = useMemo(() => ({ session, loading, configAvailable: isSupabaseConfigured }), [session, loading]);
+  useEffect(() => {
+    if (!supabase || !session?.user.id) {
+      setIsGlobalAdmin(false);
+      setAdminRoleLoading(false);
+      return;
+    }
+    let active = true;
+    setAdminRoleLoading(true);
+    void (async () => {
+      try {
+        const { data, error } = await supabase.rpc('has_gurtu_global_admin_role');
+        if (active) setIsGlobalAdmin(!error && data === true);
+      } catch {
+        if (active) setIsGlobalAdmin(false);
+      } finally {
+        if (active) setAdminRoleLoading(false);
+      }
+    })();
+    return () => { active = false; };
+  }, [session?.user.id]);
+
+  const value = useMemo(() => ({
+    session, loading, configAvailable: isSupabaseConfigured, isGlobalAdmin, adminRoleLoading,
+  }), [session, loading, isGlobalAdmin, adminRoleLoading]);
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
