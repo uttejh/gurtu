@@ -13,6 +13,7 @@ The home screen follows the supplied reference: two large actions, events inside
 - Create and update simple lists. A list can be shared with the home household of a selected family member.
 - Create, update, and review events in their saved IANA time zone. Shared events grant event access only.
 - Home visibility begins 24 hours before an event and ends at its end time. No scheduled reminder or polling job is used.
+- Chinna can open the admin-only **Family Activity** review after authenticator MFA. It can inspect capture history across households, retry safe failed saves, and audit corrections.
 
 ## Stack
 
@@ -22,7 +23,7 @@ React, Vite, TypeScript, React Router, Supabase Auth/PostgreSQL/Edge Functions, 
 
 ```sh
 npm ci
-cp .env.example .env
+cp -n .env.example .env
 ```
 
 Put `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` in `.env` to connect the browser. `SUPABASE_URL` and `SUPABASE_SECRET_KEY` are used only by the trusted family provisioning script. Do not prefix a secret key with `VITE_`.
@@ -74,7 +75,7 @@ Add the OpenAI key as a Supabase Edge Function secret with `npm run secrets:push
 
 Use `npm run provision:family` after applying migrations. It asks for the five login emails and passwords, six identity names and aliases, and the two unknown household time zones. Passwords are masked. The parents' household is fixed to `Asia/Kolkata`.
 
-Read [the deployment checklist](docs/DEPLOYMENT.md) before connecting production users. Production Supabase URL, publishable key, project, custom domain, account identities, and remaining family aliases have not been configured in this source checkout.
+Read [the deployment checklist](docs/DEPLOYMENT.md) before connecting family users. The supplied Supabase URL and publishable key are stored in the ignored local `.env`. The schema has not been applied, Auth accounts have not been provisioned, and the app has not been deployed to Cloudflare Pages.
 
 ## Deployment
 
