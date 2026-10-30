@@ -15,7 +15,7 @@ function renderApp(path: string) {
 }
 
 describe('authentication routes', () => {
-  it.each(['/remember', '/ask', '/memories', '/history', '/lists', '/calendar'])(
+  it.each(['/remember', '/ask', '/memories', '/history', '/lists', '/calendar', '/family-activity'])(
     'sends an unauthenticated visit to %s to the login page', async (path) => {
       renderApp(path);
       expect(await screen.findByRole('heading', { name: 'Welcome back' })).toBeInTheDocument();
