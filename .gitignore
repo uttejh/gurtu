@@ -1,0 +1,22 @@
+# Local environment and credentials
+.env
+.env.*
+!.env.example
+
+# Dependencies and build output
+node_modules/
+dist/
+coverage/
+.vite/
+
+# Tool output
+.wrangler/
+.supabase/
+supabase/.temp/
+playwright-report/
+test-results/
+
+# Local files
+.DS_Store
+*.log
+*.tsbuildinfo
