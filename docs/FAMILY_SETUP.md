@@ -5,8 +5,8 @@ Gurtu starts with three private households and six people. The parents share one
 | Household | Login accounts | Time zone |
 | --- | --- | --- |
 | Parents | One shared account for both parents | `Asia/Kolkata` |
-| Your household | Your account and your wife's account | Enter the correct IANA zone |
-| Brother's household | Your brother's account and his wife's account | Enter the correct IANA zone; do not guess it |
+| Household 2 (Chinna and Ash) | Chinna and Ash each have a login | Enter the correct IANA zone |
+| Household 3 (Nani and Sush) | Nani and Sush each have a login | Enter the correct IANA zone; do not guess it |
 
 ## Before running setup
 
@@ -22,7 +22,9 @@ Gurtu starts with three private households and six people. The parents share one
 npm run provision:family
 ```
 
-The script asks for a family name, household labels, five unique login emails and passwords, six identity names and aliases, and both unknown time zones. It checks that the time zones are valid IANA names. It creates the Auth users, then calls a restricted database function to create the family, households, profiles, and people in one transaction.
+The script asks for a family name, household labels, five unique login emails and passwords, six identity names and aliases, and both unknown time zones. It checks that the time zones are valid IANA names. Chinna's login must use `chinna@gurtu.com`; the trusted database provisioner assigns the global administrator role to that Auth identity while keeping Chinna in Household 2. It creates the Auth users, then calls a restricted database function to create the family, households, profiles, people, and administrator role in one transaction.
+
+When Chinna opens Family Activity after setup, Gurtu prompts him to enroll a TOTP authenticator. Other family accounts do not need MFA for normal household use.
 
 If any part fails, the script removes only Auth users it created during that run. It does not add sample family memories or events. Do not run setup again after it completes unless you intend to create a second family.
 

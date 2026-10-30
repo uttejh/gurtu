@@ -17,11 +17,17 @@ People names and aliases are readable by all authenticated users in the family b
 
 The SQL RLS suite uses synthetic fixture accounts. Do not run `supabase test db` with a production database URL; use a local Supabase stack only.
 
+## Global administrator
+
+Chinna stays in Household 2 and receives the only global administrator role through the trusted family provisioner. Role data is stored in the private schema and is not writable or readable by authenticated clients. Global read policies require both that server-controlled role and a Supabase `aal2` session. Family Activity asks Chinna to enroll or verify a TOTP authenticator; other family members continue to use their normal sign-in flow. The page uses the signed-in user's client, and RLS applies the same role and MFA check to each broader read. Administrative retry and correction RPCs repeat those checks server-side.
+
+The admin page can read family application content and operational capture text. It cannot read Auth password hashes or infrastructure credentials. Transcript views, searches, retries, and corrections add protected entries to `admin_audit_log`.
+
 ## Audio and AI
 
-The browser keeps audio only in active MediaRecorder chunks and a temporary Blob. It sends the Blob in memory to an authenticated Edge Function; the function builds an in-memory multipart request to OpenAI and clears local references and byte buffers after completion. Gurtu does not create an audio table, use Storage for audio, or place audio in logs, browser persistence, or Git.
+The browser keeps audio only in active MediaRecorder chunks and a temporary Blob. It sends the Blob in memory to an authenticated Edge Function; the function builds an in-memory multipart request to OpenAI and clears local references and byte buffers after completion. Gurtu does not create an audio table, use Storage for audio, or place audio in logs, browser persistence, or Git. A text-only capture stores the successful transcript, any corrected words, validated model interpretation, result status, and safe error description.
 
-OpenAI processes the recording for transcription. Third-party processing and retention depend on the account's current API terms and controls; Gurtu does not claim that OpenAI retains no request data. Corrected transcript text is saved only after the user reviews and confirms an action. Ask questions are not stored as conversations.
+OpenAI processes the recording for transcription. Third-party processing and retention depend on the account's current API terms and controls; Gurtu does not claim that OpenAI retains no request data. Corrected transcript text and the interpretation enter the capture history before confirmation so an incomplete request can be reviewed. The family record is written only after the user confirms it. Ask questions are not stored as conversations.
 
 Ask first retrieves permitted records and sends only a small ranked set to OpenAI. Answers without permitted source IDs are replaced with a not-found response.
 

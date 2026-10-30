@@ -25,6 +25,9 @@ All migrations live under `supabase/migrations/`. Every table below has RLS enab
 | `activity_log` | Minimal action name, actor, record reference, household, and timestamp. | Readable by the household that performed the action. It does not copy private source text. |
 | `operation_requests` | Per-user idempotency keys for memory, location, list, and event changes. | No direct API access. RPC-only. |
 | `api_rate_limits` | Per-user request counts in short time windows. | No direct API access. Rate-limit RPC only. |
+| `capture_requests` | Original/corrected Remember text, validated interpretation, processing status, safe failure, and result ID. Audio is never stored. | Submitter can read their own capture. The global administrator can review family captures only at `aal2`. Writes use narrow RPCs. |
+| `admin_audit_log` | Administrative search/view, retry, and correction history with previous/new values and reason. | Readable by the global administrator at `aal2`; protected from direct client writes and deletes. |
+| `private.global_administrators` | Trusted server-controlled administrator identities. | Private schema; no direct client access. Provisioning assigns the role. |
 
 ## Important relationships and indexes
 
@@ -45,5 +48,8 @@ All migrations live under `supabase/migrations/`. Every table below has RLS enab
 - `update_gurtu_event` updates owner-household events and records activity.
 - `consume_gurtu_rate_limit` applies fixed account-level caps for AI interpretation, Ask, and transcription.
 - `provision_gurtu_family` is restricted to the trusted `service_role` setup process.
+- `create_gurtu_capture_request`, `update_gurtu_capture_interpretation`, `confirm_gurtu_capture_operation`, `fail_gurtu_capture`, and `finish_gurtu_capture` maintain the text-only Remember lifecycle.
+- `admin_retry_gurtu_capture` retries only safe, idempotent memory, item-location, and list creation actions. It reconciles an already-written result instead of duplicating it.
+- `admin_correct_capture_people` updates a tagged association and audits the old/new values. `admin_correct_capture_location` preserves old history and appends a corrected location.
 
-The pgTAP household tests in `supabase/tests/rls_household_isolation.test.sql` create synthetic users for all three households, then verify memory isolation, family identity visibility, explicit list/event access, and attempts to change an account's household.
+The pgTAP household tests in `supabase/tests/rls_household_isolation.test.sql` use five synthetic Auth identities across three households. They verify household isolation, the AAL2 administrator boundary, record and association visibility, failed capture review, retry idempotency, correction auditing, no audio/credential columns, and attempts to self-assign an administrator role.

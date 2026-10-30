@@ -1,10 +1,10 @@
 # Deployment checklist
 
-This checkout contains the app, migrations, Edge Functions, and deployment settings. It has not been deployed: the Supabase project URL and publishable key are not present, no Pages URL exists yet, and household accounts and two household time zones must be supplied during setup.
+The app source is in the private `poulrohan23/gurtu` repository. The provided Supabase project URL and publishable key are in the ignored local `.env`. The app has not been deployed: the migrations are not applied, family Auth accounts are not provisioned, and no Cloudflare Pages URL exists yet. The two household time zones and account details still need to be entered through the masked setup script.
 
 ## 1. Prepare local configuration
 
-Add these values to the ignored `.env` after obtaining them from the Supabase project:
+Check the existing ignored `.env` before adding configuration. The Supabase URL and publishable key are already set locally; add any missing values without replacing existing keys:
 
 ```dotenv
 SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
@@ -13,7 +13,7 @@ VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
 SUPABASE_SECRET_KEY=sb_secret_...
 ```
 
-The secret key is for the local provisioning script only. Keep the browser key on the `VITE_` variable, and never add the secret key to a `VITE_` variable. The supplied Cloudflare and OpenAI credentials are already held in the local ignored file; they are not in this repository.
+The secret key is for the local provisioning script only. Keep the browser key on the `VITE_` variable, and never add the secret key to a `VITE_` variable. The supplied Cloudflare and OpenAI credentials are also held only in the ignored local file; they are not in this repository.
 
 ## 2. Create and configure Supabase
 
@@ -48,13 +48,13 @@ After migrations are applied and `SUPABASE_URL` / `SUPABASE_SECRET_KEY` are conf
 npm run provision:family
 ```
 
-The interactive script creates five email/password Auth users, one shared profile for the parents' login, two profiles for your household, and two profiles for your brother's household. It creates six people as separate identities. It asks for login emails/passwords, identity names, optional aliases, and both non-India IANA time zones. It defaults only Mom/Dad aliases supplied in the brief and the parents' known `Asia/Kolkata` zone. It masks password entry and never writes passwords to disk.
+The interactive script creates five email/password Auth users, one shared profile for the parents' login, Chinna and Ash in Household 2, and Nani and Sush in Household 3. It creates six people as separate identities. Chinna must use `chinna@gurtu.com`; only that identity receives the administrator role, and remains a member of Household 2. The script asks for login emails/passwords, identity names, optional aliases, and both non-India IANA time zones. It defaults only Mom/Dad aliases supplied in the brief and the parents' known `Asia/Kolkata` zone. It masks password entry and never writes passwords to disk. Chinna enrolls a TOTP authenticator the first time he opens Family Activity.
 
 Confirm all six person names and alias lists before provision. If setup fails after creating new Auth users, the script removes only the users created by that run.
 
 ## 4. Connect private GitHub source to Cloudflare Pages
 
-Once the private `gurtu` repository exists and has the app source:
+The private `gurtu` repository already exists with the app source:
 
 1. In Cloudflare, open **Workers & Pages → Create application → Pages → Import an existing Git repository** and authorize the GitHub repository.
 2. Select `gurtu` and use production branch `main`.
@@ -69,6 +69,8 @@ Cloudflare's current Pages docs list Vite's build command and output directory a
 
 - Test the five logins, including the same shared parents account on two devices.
 - Confirm a memory saved by one household cannot be read by another; confirm only a specifically shared list or event crosses a household boundary.
+- Confirm only Chinna sees Family Activity, and cross-household rows remain hidden until his authenticator session reaches AAL2.
+- Review a failed capture, retry an eligible list once, and confirm a second retry cannot create another list. Check a tag and location correction in the audit trail.
 - Test a Telugu, English, and mixed-language clip with consent and verify the transcript before saving.
 - Create an event in each household's configured zone and check daylight-saving transitions.
 - Export the `public` schema and data to an encrypted location outside the repository. Review [backup limits and procedure](SECURITY.md#backups-and-recovery); Free projects do not have automatic backups.
