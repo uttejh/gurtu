@@ -1,32 +1,32 @@
 # Family setup
 
-Gurtu starts with three private households and six people. The parents share one login, but Mom and Dad stay separate people so each can be tagged independently.
+The family is provisioned with three private households and six people. The parents share one login, but Mom and Dad stay separate people so each can be tagged independently.
 
 | Household | Login accounts | Time zone |
 | --- | --- | --- |
 | Parents | One shared account for both parents | `Asia/Kolkata` |
-| Household 2 (Chinna and Ash) | Chinna and Ash each have a login | Enter the correct IANA zone |
-| Household 3 (Nani and Sush) | Nani and Sush each have a login | Enter the correct IANA zone; do not guess it |
+| Household 2 (`chinnodu`) | Chinna and Ash each have a login | `Asia/Kolkata` |
+| Household 3 (`peddodu`) | Nani and Sush each have a login | `America/Chicago` |
 
-## Before running setup
+## Before provisioning a new family
 
 1. Ask each account owner which email and password they will use. The script accepts passwords privately at the terminal and displays `*` characters instead of the password.
 2. Decide the names shown in the people directory. Mom and Dad should be different people even though they share a login.
 3. Ask the family which nicknames and Telugu aliases should be recognized. The script begins Mom and Dad with Mom/Amma/అమ్మ and Dad/Nanna/నాన్న; add other aliases only after confirming them.
-4. Obtain the correct IANA time zones for the two other households. Examples include `America/Toronto` and `America/Los_Angeles`; these examples are not assumptions about your family.
+4. Obtain each household's IANA time zone. `IST` normalizes to `Asia/Kolkata`; `CST`, `CDT`, and `CT` normalize to `America/Chicago`.
 5. Apply database migrations and put `SUPABASE_URL` and `SUPABASE_SECRET_KEY` in the local ignored `.env`.
 
-## Run once
+## Provision a new family
 
 ```sh
 npm run provision:family
 ```
 
-The script asks for a family name, household labels, five unique login emails and passwords, six identity names and aliases, and both unknown time zones. It checks that the time zones are valid IANA names. Chinna's login must use `chinna@gurtu.com`; the trusted database provisioner assigns the global administrator role to that Auth identity while keeping Chinna in Household 2. It creates the Auth users, then calls a restricted database function to create the family, households, profiles, people, and administrator role in one transaction.
+The script asks for a family name, household labels, five unique login emails and passwords, six identity names and aliases, and both household time zones. It normalizes common abbreviations before creating Auth users, then calls a restricted database function to create the family, households, profiles, people, and administrator role in one transaction. Chinna must use `chinna@gurtu.com`; he receives the only administrator role and stays in Household 2.
 
 When Chinna opens Family Activity after setup, Gurtu prompts him to enroll a TOTP authenticator. Other family accounts do not need MFA for normal household use.
 
-If any part fails, the script removes only Auth users it created during that run. It does not add sample family memories or events. Do not run setup again after it completes unless you intend to create a second family.
+The first family setup is complete. Do not run it again in this project unless you intend to create a second family. If a future setup fails, the script removes only Auth users created during that run. It does not add sample family data.
 
 ## What members can see
 
