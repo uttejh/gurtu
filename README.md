@@ -75,7 +75,7 @@ Add the OpenAI key as a Supabase Edge Function secret with `npm run secrets:push
 
 Use `npm run provision:family` after applying migrations. It asks for the five login emails and passwords, six identity names and aliases, and the two unknown household time zones. Passwords are masked. The parents' household is fixed to `Asia/Kolkata`.
 
-Read [the deployment checklist](docs/DEPLOYMENT.md) before connecting family users. The supplied Supabase URL and publishable key are stored in the ignored local `.env`. Cloudflare Pages is live at [gurtu.pages.dev](https://gurtu.pages.dev), but the Supabase schema has not been applied and family Auth accounts have not been provisioned. The app cannot serve family data until the Supabase setup is complete.
+Read [the deployment checklist](docs/DEPLOYMENT.md) before connecting family users. The supplied Supabase URL and publishable key are stored in the ignored local `.env`. Cloudflare Pages is live at [gurtu.pages.dev](https://gurtu.pages.dev). The Supabase migrations, Auth settings, three Edge Functions, and OpenAI function secrets are deployed; family Auth accounts still need to be provisioned before anyone can log in and use family data.
 
 ## Deployment
 
