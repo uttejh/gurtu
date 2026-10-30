@@ -1,6 +1,6 @@
 # Deployment checklist
 
-The app source is in the private `poulrohan23/gurtu` repository. The Supabase project URL and publishable key are in the ignored local `.env`. Cloudflare Pages is live at [https://gurtu.pages.dev](https://gurtu.pages.dev). The Supabase migrations, Auth settings, three Edge Functions, and OpenAI function secrets are deployed. Family Auth accounts are not provisioned yet; the two household time zones and account details must be entered through the masked setup script.
+The app source is in the private `poulrohan23/gurtu` repository. The Supabase project URL and publishable key are in the ignored local `.env`. Cloudflare Pages is live at [https://gurtu.pages.dev](https://gurtu.pages.dev). The Supabase migrations, Auth settings, three Edge Functions, OpenAI function secrets, and family accounts are deployed.
 
 ## 1. Prepare local configuration
 
@@ -39,9 +39,9 @@ After migrations are applied and `SUPABASE_URL` / `SUPABASE_SECRET_KEY` are conf
 npm run provision:family
 ```
 
-The interactive script creates five email/password Auth users, one shared profile for the parents' login, Chinna and Ash in Household 2, and Nani and Sush in Household 3. It creates six people as separate identities. Chinna must use `chinna@gurtu.com`; only that identity receives the administrator role, and remains a member of Household 2. The script asks for login emails/passwords, identity names, optional aliases, and both non-India IANA time zones. It defaults only Mom/Dad aliases supplied in the brief and the parents' known `Asia/Kolkata` zone. It masks password entry and never writes passwords to disk. Chinna enrolls a TOTP authenticator the first time he opens Family Activity.
+The family has three households, five logins and six people. Household zones are `Asia/Kolkata` for the parents and Household 2, and `America/Chicago` for Household 3. Chinna's login is `chinna@gurtu.com`, receives the only global administrator role, and remains in Household 2. He enrolls a TOTP authenticator the first time he opens Family Activity.
 
-Confirm all six person names and alias lists before provision. If setup fails after creating new Auth users, the script removes only the users created by that run.
+The first family setup is complete; do not run it again unless you intend to create a second family. For later setup, the script normalizes common time-zone abbreviations to IANA names and prints database errors directly. If a future run fails after creating Auth users, it removes only users created during that run.
 
 ## 4. Cloudflare Pages deployment
 
