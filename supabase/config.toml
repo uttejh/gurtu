@@ -9,7 +9,7 @@ max_rows = 1000
 [db]
 port = 54322
 shadow_port = 54320
-major_version = 15
+major_version = 17
 
 [studio]
 enabled = true
@@ -17,9 +17,25 @@ port = 54323
 
 [auth]
 enabled = true
-site_url = "http://localhost:5173"
-additional_redirect_urls = ["http://127.0.0.1:5173", "http://localhost:5173"]
+site_url = "https://gurtu.pages.dev"
+additional_redirect_urls = ["http://127.0.0.1:5173", "http://localhost:5173", "https://gurtu.pages.dev", "https://gurtu.pages.dev/reset-password"]
 enable_signup = false
+
+[auth.mfa]
+max_enrolled_factors = 10
+
+[auth.mfa.totp]
+enroll_enabled = true
+verify_enabled = true
+
+[auth.email]
+enable_signup = true
+double_confirm_changes = true
+enable_confirmations = true
+secure_password_change = false
+max_frequency = "1m"
+otp_length = 8
+otp_expiry = 3600
 
 [functions.transcribe-audio]
 verify_jwt = true
