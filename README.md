@@ -73,9 +73,9 @@ supabase functions deploy ask-memory
 
 Add the OpenAI key as a Supabase Edge Function secret with `npm run secrets:push`. The script uploads only the OpenAI key, model names, and optional allowed origins from the ignored local `.env`; it removes its temporary restricted file afterward. It does not upload the Cloudflare token or Supabase secret key.
 
-Use `npm run provision:family` after applying migrations. It asks for the five login emails and passwords, six identity names and aliases, and the two unknown household time zones. Passwords are masked. The parents' household is fixed to `Asia/Kolkata`.
+Use `npm run provision:family` after applying migrations. It asks for five login emails and passwords, six identity names and aliases, and the household time zones. Passwords are masked; `IST` maps to `Asia/Kolkata`, and `CST`, `CDT`, or `CT` map to `America/Chicago`.
 
-Read [the deployment checklist](docs/DEPLOYMENT.md) before connecting family users. The supplied Supabase URL and publishable key are stored in the ignored local `.env`. Cloudflare Pages is live at [gurtu.pages.dev](https://gurtu.pages.dev). The Supabase migrations, Auth settings, three Edge Functions, and OpenAI function secrets are deployed; family Auth accounts still need to be provisioned before anyone can log in and use family data.
+Read [the deployment checklist](docs/DEPLOYMENT.md) before connecting family users. The supplied Supabase URL and publishable key are stored in the ignored local `.env`. Cloudflare Pages is live at [gurtu.pages.dev](https://gurtu.pages.dev). The Supabase migrations, Auth settings, three Edge Functions, OpenAI function secrets, and the family accounts and directory are provisioned. Chinna must enroll TOTP before opening Family Activity.
 
 ## Deployment
 
