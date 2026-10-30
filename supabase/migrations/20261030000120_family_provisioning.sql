@@ -71,6 +71,12 @@ begin
     insert into public.profiles(user_id, family_id, household_id, display_name)
       values ((v_entry->>'user_id')::uuid, v_family_id, (v_household_ids->>v_key)::uuid, trim(v_entry->>'display_name'));
   end loop;
+  select (p.value->>'user_id')::uuid into v_id
+    from jsonb_array_elements(p_profiles) p
+    join auth.users u on u.id = (p.value->>'user_id')::uuid
+    where lower(u.email) = 'chinna@gurtu.com' and p.value->>'household_key' = 'my_household';
+  if v_id is null then raise exception 'Chinna must be provisioned in Household 2 to receive the administrator role' using errcode = '22023'; end if;
+  insert into private.global_administrators(user_id) values (v_id);
   for v_entry in select value from jsonb_array_elements(p_people) loop
     v_key := v_entry->>'household_key';
     if v_household_ids->>v_key is null then raise exception 'person household is invalid' using errcode = '22023'; end if;
@@ -82,7 +88,7 @@ begin
         coalesce(array(select trim(alias_text) from jsonb_array_elements_text(coalesce(v_entry->'aliases', '[]'::jsonb)) as aliases(alias_text) where length(trim(alias_text)) > 0), '{}')
       );
   end loop;
-  return jsonb_build_object('family_id', v_family_id, 'household_ids', v_household_ids, 'profile_count', 5, 'person_count', 6);
+  return jsonb_build_object('family_id', v_family_id, 'household_ids', v_household_ids, 'profile_count', 5, 'person_count', 6, 'global_admin_user_id', v_id);
 end
 $$;
 
