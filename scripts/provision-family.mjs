@@ -78,8 +78,8 @@ if (!url || !secretKey) {
 const familyName = await required('Family name');
 const householdNames = {
   parents: await required('Parents household name', { defaultValue: 'Parents' }),
-  my_household: await required('Your household name', { defaultValue: 'My household' }),
-  brother_household: await required("Your brother's household name", { defaultValue: "Brother's household" }),
+  my_household: await required('Household 2 name', { defaultValue: 'Chinna and Ash' }),
+  brother_household: await required('Household 3 name', { defaultValue: 'Nani and Sush' }),
 };
 const zones = {
   parents: 'Asia/Kolkata',
@@ -89,15 +89,15 @@ const zones = {
 
 const definitions = [
   { key: 'parents', label: 'Parents shared login', household_key: 'parents', defaultName: 'Parents shared account' },
-  { key: 'me', label: 'Your login', household_key: 'my_household', defaultName: 'Me' },
-  { key: 'wife', label: "Your wife's login", household_key: 'my_household', defaultName: 'Wife' },
-  { key: 'brother', label: "Your brother's login", household_key: 'brother_household', defaultName: 'Brother' },
-  { key: 'sister_in_law', label: "Your brother's wife's login", household_key: 'brother_household', defaultName: 'Sister in law' },
+  { key: 'chinna', label: 'Chinna global administrator login', household_key: 'my_household', defaultName: 'Chinna', defaultEmail: 'chinna@gurtu.com' },
+  { key: 'ash', label: 'Ash login', household_key: 'my_household', defaultName: 'Ash' },
+  { key: 'nani', label: 'Nani login', household_key: 'brother_household', defaultName: 'Nani' },
+  { key: 'sush', label: 'Sush login', household_key: 'brother_household', defaultName: 'Sush' },
 ];
 
 const accounts = [];
 for (const definition of definitions) {
-  const email = (await required(`${definition.label} email`)).toLowerCase();
+  const email = (await required(`${definition.label} email`, { defaultValue: definition.defaultEmail })).toLowerCase();
   const display_name = await required(`${definition.label} profile name`, { defaultValue: definition.defaultName });
   let password;
   let confirmation;
@@ -113,15 +113,20 @@ if (new Set(accounts.map((account) => account.email)).size !== accounts.length) 
   process.stdin.setRawMode(false);
   process.exit(1);
 }
+if (accounts.find((account) => account.key === 'chinna')?.email !== 'chinna@gurtu.com') {
+  console.error('The global administrator login must use chinna@gurtu.com. No accounts were created.');
+  process.stdin.setRawMode(false);
+  process.exit(1);
+}
 
 const people = [];
 for (const person of [
   { household_key: 'parents', label: 'Mom', defaultAliases: ['Mom', 'Amma', 'అమ్మ'] },
   { household_key: 'parents', label: 'Dad', defaultAliases: ['Dad', 'Nanna', 'నాన్న'] },
-  { household_key: 'my_household', label: 'You', defaultAliases: [] },
-  { household_key: 'my_household', label: "Your wife", defaultAliases: [] },
-  { household_key: 'brother_household', label: 'Your brother', defaultAliases: [] },
-  { household_key: 'brother_household', label: "Your brother's wife", defaultAliases: [] },
+  { household_key: 'my_household', label: 'Chinna', defaultAliases: [] },
+  { household_key: 'my_household', label: 'Ash', defaultAliases: [] },
+  { household_key: 'brother_household', label: 'Nani', defaultAliases: [] },
+  { household_key: 'brother_household', label: 'Sush', defaultAliases: [] },
 ]) {
   const display_name = await required(`${person.label} name`);
   const extra = await prompt(`${person.label} additional aliases (comma separated, optional)`);
