@@ -75,8 +75,8 @@ Add the OpenAI key as a Supabase Edge Function secret with `npm run secrets:push
 
 Use `npm run provision:family` after applying migrations. It asks for the five login emails and passwords, six identity names and aliases, and the two unknown household time zones. Passwords are masked. The parents' household is fixed to `Asia/Kolkata`.
 
-Read [the deployment checklist](docs/DEPLOYMENT.md) before connecting family users. The supplied Supabase URL and publishable key are stored in the ignored local `.env`. The schema has not been applied, Auth accounts have not been provisioned, and the app has not been deployed to Cloudflare Pages.
+Read [the deployment checklist](docs/DEPLOYMENT.md) before connecting family users. The supplied Supabase URL and publishable key are stored in the ignored local `.env`. Cloudflare Pages is live at [gurtu.pages.dev](https://gurtu.pages.dev), but the Supabase schema has not been applied and family Auth accounts have not been provisioned. The app cannot serve family data until the Supabase setup is complete.
 
 ## Deployment
 
-Cloudflare Pages serves the static Vite output in `dist/`; Supabase remains the only application backend. Connect the private GitHub repository to Pages, set the build command to `npm run build`, set the output directory to `dist`, and add the two public `VITE_SUPABASE_*` variables in production and preview environments. The OpenAI key must never be a Cloudflare build variable. See [deployment](docs/DEPLOYMENT.md) for the remaining auth, function, and privacy setup.
+Cloudflare Pages serves the static Vite output in `dist/`; Supabase remains the only application backend. Pages is connected to the private GitHub repository's `main` branch with `npm run build`, output directory `dist`, and the two public `VITE_SUPABASE_*` variables in production and preview environments. Pushes to `main` trigger builds. The OpenAI key must never be a Cloudflare build variable. See [deployment](docs/DEPLOYMENT.md) for the remaining auth, function, and privacy setup.
