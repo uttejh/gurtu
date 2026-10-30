@@ -52,9 +52,9 @@ async function required(label, options) {
 
 async function timeZone(label) {
   while (true) {
-    const value = await required(label);
+    const value = ((submitted) => ({ ist: 'Asia/Kolkata', cst: 'America/Chicago', cdt: 'America/Chicago', ct: 'America/Chicago' })[submitted.trim().toLowerCase()] ?? submitted)(await required(label));
     try {
-      new Intl.DateTimeFormat('en', { timeZone: value }).format(new Date());
+      if (!value.includes('/')) throw new RangeError('Use a region-based IANA time zone.'); new Intl.DateTimeFormat('en', { timeZone: value }).format(new Date());
       return value;
     } catch {
       process.stdout.write('Enter a valid IANA time zone such as America/Toronto.\n');
@@ -156,7 +156,7 @@ try {
     p_profiles: accounts.map((account, index) => ({ user_id: createdUsers[index].id, household_key: account.household_key, display_name: account.display_name })),
     p_people: people,
   });
-  if (error || !data) throw new Error('The family records could not be created.');
+  if (error) throw new Error('Family database setup failed (' + (error.code || 'unknown') + '): ' + error.message); if (!data) throw new Error('Family database setup returned no result.');
   process.stdout.write('Family setup is complete: 3 households, 5 logins and 6 people.\n');
   process.stdout.write(`Family ID: ${data.family_id}\n`);
 } catch (error) {
