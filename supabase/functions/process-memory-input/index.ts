@@ -5,8 +5,8 @@ import { consumeLimit, HttpError, readJson, withRequest, type RequestContext } f
 import { openAIJson } from '../_shared/openai.ts';
 
 const InputSchema = z.discriminatedUnion('mode', [
-  z.object({ mode: z.literal('interpret'), original_text: z.string().trim().min(1).max(8000), request_id: z.string().uuid() }).strict(),
-  z.object({ mode: z.literal('execute'), original_text: z.string().trim().min(1).max(8000), request_id: z.string().uuid(), proposal: z.unknown(), person_ids: z.array(z.string().uuid()).max(100), confirmed: z.literal(true) }).strict(),
+  z.object({ mode: z.literal('interpret'), input_type: z.enum(['text', 'voice']), original_text: z.string().trim().min(1).max(8000), corrected_text: z.string().trim().min(1).max(8000), request_id: z.string().uuid() }).strict(),
+  z.object({ mode: z.literal('execute'), request_id: z.string().uuid(), person_ids: z.array(z.string().uuid()).max(100), confirmed: z.literal(true) }).strict(),
 ]);
 
 type PersonRow = { id: string; display_name: string; aliases: string[]; home_household_id: string; households?: { timezone?: string } | null };
@@ -90,6 +90,39 @@ function requireRpcSuccess(error: { message?: string } | null) {
   if (error) throw new HttpError(400, 'The action could not be saved. Please check it and try again.');
 }
 
+function requireRpcRecordId(data: unknown, error: { message?: string } | null): string {
+  requireRpcSuccess(error);
+  if (typeof data !== 'string') throw new HttpError(503, 'The action result could not be confirmed. Please try again.');
+  return data;
+}
+
+function inferredPeople(proposal: ActionProposal, people: PersonRow[]): string[] {
+  if (!('people_mentions' in proposal)) return [];
+  const normalized = (value: string) => value.normalize('NFKC').toLocaleLowerCase().trim();
+  const selected = new Set<string>();
+  for (const mention of proposal.people_mentions) {
+    const name = normalized(mention);
+    const matches = people.filter((person) => [person.display_name, ...(person.aliases ?? [])].some((value) => normalized(value) === name));
+    if (matches.length === 1) selected.add(matches[0].id);
+  }
+  return [...selected];
+}
+
+async function markCaptureFailed(
+  context: RequestContext,
+  requestId: string,
+  stage: 'interpretation_failed' | 'operation_failed',
+) {
+  await context.supabase.rpc('fail_gurtu_capture', {
+    p_request_id: requestId,
+    p_processing_status: stage,
+    p_error_code: stage === 'operation_failed' ? 'OPERATION_FAILED' : 'INTERPRETATION_FAILED',
+    p_safe_error_description: stage === 'operation_failed'
+      ? 'The confirmed action did not finish in the family database. It remains available for review.'
+      : 'Gurtu received the request but could not prepare a safe interpretation.',
+  });
+}
+
 async function findUniqueList(context: RequestContext, title: string): Promise<string> {
   const { data, error } = await context.supabase.from('lists').select('id').eq('title', title).limit(2);
   if (error || !data?.length) throw new HttpError(404, 'That list could not be found in your family lists.');
@@ -102,36 +135,36 @@ async function executeProposal(context: RequestContext, proposal: ActionProposal
   const supabase = context.supabase;
   switch (proposal.action) {
     case 'save_memory': {
-      const { error } = await supabase.rpc('save_gurtu_memory', {
+      const { data, error } = await supabase.rpc('save_gurtu_memory', {
         p_original_text: text,
         p_language: detectLanguage(text),
         p_summary: proposal.summary,
         p_person_ids: personIds,
         p_request_id: requestId,
       });
-      requireRpcSuccess(error);
-      return { ok: true, message: 'Saved to your family memories.' };
+      const id = requireRpcRecordId(data, error);
+      return { ok: true, message: 'Saved to your family memories.', result_entity_type: 'memory', result_entity_id: id };
     }
     case 'save_item_location': {
-      const { error } = await supabase.rpc('save_gurtu_item_location', {
+      const { data, error } = await supabase.rpc('save_gurtu_item_location', {
         p_original_text: text,
         p_item_name: proposal.item_name,
         p_location: proposal.location,
         p_person_ids: personIds,
         p_request_id: requestId,
       });
-      requireRpcSuccess(error);
-      return { ok: true, message: `Remembered where ${proposal.item_name} was last reported.` };
+      const id = requireRpcRecordId(data, error);
+      return { ok: true, message: `Remembered where ${proposal.item_name} was last reported.`, result_entity_type: 'item', result_entity_id: id };
     }
     case 'create_list': {
-      const { error } = await supabase.rpc('create_gurtu_list', {
+      const { data, error } = await supabase.rpc('create_gurtu_list', {
         p_title: proposal.title,
         p_person_ids: personIds,
         p_items: proposal.items,
         p_request_id: requestId,
       });
-      requireRpcSuccess(error);
-      return { ok: true, message: `${proposal.title} was added to your lists.` };
+      const id = requireRpcRecordId(data, error);
+      return { ok: true, message: `${proposal.title} was added to your lists.`, result_entity_type: 'list', result_entity_id: id };
     }
     case 'add_list_items': {
       const listId = await findUniqueList(context, proposal.list_title);
@@ -142,7 +175,7 @@ async function executeProposal(context: RequestContext, proposal: ActionProposal
         });
         requireRpcSuccess(error);
       }
-      return { ok: true, message: `Added to ${proposal.list_title}.` };
+      return { ok: true, message: `Added to ${proposal.list_title}.`, result_entity_type: 'list', result_entity_id: listId };
     }
     case 'update_list_item':
     case 'remove_list_item': {
@@ -151,14 +184,15 @@ async function executeProposal(context: RequestContext, proposal: ActionProposal
         .eq('list_id', listId).eq('item_text', proposal.item_text).limit(2);
       if (error || !matches?.length) throw new HttpError(404, 'That item could not be found in the list.');
       if (matches.length > 1) throw new HttpError(409, 'That list has more than one matching item. Please make the item name clearer.');
-      const { error: changeError } = await supabase.rpc('change_gurtu_list_item', {
+      const { data: changedId, error: changeError } = await supabase.rpc('change_gurtu_list_item', {
         p_action: proposal.action === 'remove_list_item' ? 'remove' : proposal.completed ? 'complete' : 'uncomplete',
         p_list_id: listId,
         p_item_id: matches[0].id,
         p_request_id: requestId,
       });
       requireRpcSuccess(changeError);
-      return { ok: true, message: proposal.action === 'remove_list_item' ? `Removed ${proposal.item_text}.` : 'Your list was updated.' };
+      if (typeof changedId !== 'string') throw new HttpError(503, 'The action result could not be confirmed. Please try again.');
+      return { ok: true, message: proposal.action === 'remove_list_item' ? `Removed ${proposal.item_text}.` : 'Your list was updated.', result_entity_type: 'list', result_entity_id: listId };
     }
     case 'create_event': {
       if (!allowedTimeZone(proposal.time_zone, people, context.profile.timezone)) {
@@ -171,7 +205,7 @@ async function executeProposal(context: RequestContext, proposal: ActionProposal
           ? localToUtc(proposal.end_time <= proposal.local_time! ? Temporal.PlainDate.from(proposal.local_date).add({ days: 1 }).toString() : proposal.local_date, proposal.end_time, proposal.time_zone)
           : Temporal.Instant.from(startsAt).add({ minutes: 60 }).toString();
       if (Temporal.Instant.compare(Temporal.Instant.from(endsAt), Temporal.Instant.from(startsAt)) <= 0) throw new HttpError(400, 'The event end must be after its start.');
-      const { error } = await supabase.rpc('create_gurtu_event', {
+      const { data, error } = await supabase.rpc('create_gurtu_event', {
         p_title: proposal.title,
         p_description: null,
         p_starts_at: startsAt,
@@ -181,8 +215,8 @@ async function executeProposal(context: RequestContext, proposal: ActionProposal
         p_person_ids: personIds,
         p_request_id: requestId,
       });
-      requireRpcSuccess(error);
-      return { ok: true, message: `${proposal.title} was added to your calendar.` };
+      const id = requireRpcRecordId(data, error);
+      return { ok: true, message: `${proposal.title} was added to your calendar.`, result_entity_type: 'event', result_entity_id: id };
     }
     case 'update_event': {
       if (!allowedTimeZone(proposal.time_zone, people, context.profile.timezone)) throw new HttpError(400, 'Choose the time zone for this family event.');
@@ -194,7 +228,7 @@ async function executeProposal(context: RequestContext, proposal: ActionProposal
       const endsAt = proposal.all_day
         ? localToUtc(Temporal.PlainDate.from(proposal.local_date).add({ days: 1 }).toString(), '00:00', proposal.time_zone)
         : Temporal.Instant.from(startsAt).add({ minutes: 60 }).toString();
-      const { error: updateError } = await supabase.rpc('update_gurtu_event', {
+      const { data: updatedId, error: updateError } = await supabase.rpc('update_gurtu_event', {
         p_event_id: events[0].id,
         p_title: proposal.event_title,
         p_starts_at: startsAt,
@@ -204,7 +238,8 @@ async function executeProposal(context: RequestContext, proposal: ActionProposal
         p_request_id: requestId,
       });
       requireRpcSuccess(updateError);
-      return { ok: true, message: `${proposal.event_title} was updated.` };
+      if (typeof updatedId !== 'string') throw new HttpError(503, 'The action result could not be confirmed. Please try again.');
+      return { ok: true, message: `${proposal.event_title} was updated.`, result_entity_type: 'event', result_entity_id: updatedId };
     }
     case 'clarify':
       throw new HttpError(400, 'Please add the missing details before saving.');
@@ -217,32 +252,82 @@ async function handler(context: RequestContext, request: Request) {
   const input = parsed.data;
 
   if (input.mode === 'interpret') {
-    await consumeLimit(context, 'ai_interpret');
-    const people = await loadFamilyPeople(context);
-    const currentTime = new Intl.DateTimeFormat('en', { dateStyle: 'full', timeStyle: 'short', timeZone: context.profile.timezone }).format(new Date());
-    const raw = await openAIJson<unknown>({
-      name: 'gurtu_memory_action',
-      schema: ActionOutputSchema,
-      instructions: `You help a family preserve information in Telugu, English, or mixed Telugu-English. Read the user's exact words and choose one supported action. Never invent dates, people, list names, event titles, or facts. Preserve the user's original words verbatim in original_text. If an event lacks a reliable date or time, return clarify. For a person-specific event, use that person's listed home time zone; otherwise use the current household time zone. If the input is a question rather than a clear request to save or change something, return clarify. Do not create reminders or notifications. Always include all schema fields; use null for unused strings/booleans and [] for unused arrays. People mentions must be names or aliases from the supplied directory. Current local time: ${currentTime}. Current household time zone: ${context.profile.timezone}. Family people (identity only):\n${personHint(people)}`,
-      userContent: input.original_text,
-      maxOutputTokens: 1600,
+    const { error: captureError } = await context.supabase.rpc('create_gurtu_capture_request', {
+      p_request_id: input.request_id,
+      p_input_type: input.input_type,
+      p_original_transcript: input.original_text,
     });
+    if (captureError) throw new HttpError(503, 'The request could not be safely recorded. Please try again.');
     try {
-      return { proposal: validateProposal(raw), request_id: input.request_id };
-    } catch {
+      await consumeLimit(context, 'ai_interpret');
+      const people = await loadFamilyPeople(context);
+      const currentTime = new Intl.DateTimeFormat('en', { dateStyle: 'full', timeStyle: 'short', timeZone: context.profile.timezone }).format(new Date());
+      const raw = await openAIJson<unknown>({
+        name: 'gurtu_memory_action',
+        schema: ActionOutputSchema,
+        instructions: `You help a family preserve information in Telugu, English, or mixed Telugu-English. Read the user's exact words and choose one supported action. Never invent dates, people, list names, event titles, or facts. Preserve Telugu script and the words as spoken. If an event lacks a reliable date or time, return clarify. For a person-specific event, use that person's listed home time zone; otherwise use the current household time zone. If the input is a question rather than a clear request to save or change something, return clarify. Do not create reminders or notifications. Always include all schema fields; use null for unused strings/booleans and [] for unused arrays. People mentions must be names or aliases from the supplied directory. Current local time: ${currentTime}. Current household time zone: ${context.profile.timezone}. Family people (identity only):\n${personHint(people)}`,
+        userContent: input.corrected_text,
+        maxOutputTokens: 1600,
+      });
+      const proposal = validateProposal(raw);
+      const selectedPersonIds = inferredPeople(proposal, people);
+      const { error: saveInterpretationError } = await context.supabase.rpc('update_gurtu_capture_interpretation', {
+        p_request_id: input.request_id,
+        p_original_transcript: input.original_text,
+        p_corrected_transcript: input.corrected_text,
+        p_detected_language: detectLanguage(input.corrected_text),
+        p_detected_intent: proposal.action,
+        p_extracted_payload: proposal,
+        p_selected_person_ids: selectedPersonIds,
+        p_processing_status: proposal.action === 'clarify' ? 'needs_clarification' : 'awaiting_confirmation',
+      });
+      if (saveInterpretationError) throw new HttpError(503, 'The interpretation could not be safely recorded. Please try again.');
+      return { proposal, request_id: input.request_id };
+    } catch (error) {
+      await markCaptureFailed(context, input.request_id, 'interpretation_failed');
+      if (error instanceof HttpError) throw error;
       throw new HttpError(502, 'Gurtu could not prepare a safe action. Please try saying it another way.');
     }
   }
 
   if (!input.confirmed) throw new HttpError(400, 'Confirm the action before saving it.');
+  const { data: capture, error: captureError } = await context.supabase.from('capture_requests')
+    .select('input_type,original_transcript,corrected_transcript,detected_intent,extracted_payload,processing_status')
+    .eq('request_id', input.request_id).eq('submitted_by_user_id', context.user.id).maybeSingle();
+  if (captureError || !capture || !['awaiting_confirmation', 'operation_pending', 'operation_failed'].includes(capture.processing_status)) {
+    throw new HttpError(409, 'This request is no longer ready to save. Please review it again.');
+  }
   let proposal: ActionProposal;
   try {
-    proposal = validateProposal(input.proposal);
+    proposal = validateProposal(capture.extracted_payload);
   } catch {
     throw new HttpError(400, 'Please review the action and try again.');
   }
   if (proposal.action === 'clarify') throw new HttpError(400, 'Please add the missing details before saving.');
-  return executeProposal(context, proposal, input.original_text, input.request_id, input.person_ids);
+  const correctedText = capture.corrected_transcript || capture.original_transcript;
+  if (!correctedText || !capture.detected_intent || capture.detected_intent !== proposal.action) {
+    throw new HttpError(409, 'The saved interpretation could not be confirmed. Please review it again.');
+  }
+  const { data: confirmed, error: confirmationError } = await context.supabase.rpc('confirm_gurtu_capture_operation', {
+    p_request_id: input.request_id,
+    p_corrected_transcript: correctedText,
+    p_selected_person_ids: input.person_ids,
+  });
+  if (confirmationError || confirmed !== true) throw new HttpError(409, 'This request is no longer ready to save. Please review it again.');
+  try {
+    const result = await executeProposal(context, proposal, correctedText, input.request_id, input.person_ids);
+    const { error: finishError } = await context.supabase.rpc('finish_gurtu_capture', {
+      p_request_id: input.request_id,
+      p_result_entity_type: result.result_entity_type,
+      p_result_entity_id: result.result_entity_id,
+    });
+    if (finishError) throw new HttpError(503, 'The save may have completed, but Gurtu could not confirm its result. Please retry this same request.');
+    return result;
+  } catch (error) {
+    await markCaptureFailed(context, input.request_id, 'operation_failed');
+    if (error instanceof HttpError) throw error;
+    throw new HttpError(503, 'The save did not finish. Please try again.');
+  }
 }
 
 Deno.serve((request) => withRequest(request, handler));
