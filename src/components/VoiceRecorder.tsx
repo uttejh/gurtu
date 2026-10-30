@@ -5,6 +5,12 @@ import { supabase } from '../lib/supabase';
 
 const MAX_RECORDING_MS = 2 * 60 * 1000;
 
+function receiptMessage() {
+  return navigator.onLine
+    ? "We couldn't confirm whether Gurtu received the recording. No family memory was saved. Please try again or type instead."
+    : 'You appear to be offline. The recording was not sent or saved. Please reconnect and try again or type instead.';
+}
+
 function recordingType(): string | undefined {
   if (typeof MediaRecorder === 'undefined') return undefined;
   const preferred = ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm', 'audio/mp4;codecs=mp4a.40.2'];
@@ -15,7 +21,7 @@ function recordingFileName(type: string): string {
   return type.includes('mp4') ? 'family-memory.m4a' : 'family-memory.webm';
 }
 
-export function VoiceRecorder({ onTranscript }: { onTranscript: (transcript: string) => void }) {
+export function VoiceRecorder({ onTranscript }: { onTranscript: (transcript: string, requestId: string) => void }) {
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<BlobPart[]>([]);
@@ -45,17 +51,19 @@ export function VoiceRecorder({ onTranscript }: { onTranscript: (transcript: str
     setTranscribing(true);
     setMessage(null);
     const form = new FormData();
+    const requestId = crypto.randomUUID();
     form.append('file', blob, recordingFileName(blob.type));
+    form.append('request_id', requestId);
     try {
       const { data, error } = await supabase.functions.invoke('transcribe-audio', { body: form });
       if (error || typeof data?.transcript !== 'string' || !data.transcript.trim()) {
-        setMessage({ text: "We couldn't understand the recording. Please try again or type instead.", tone: 'error' });
+        setMessage({ text: "Gurtu couldn't transcribe the recording. No family memory was saved. Please try again or type instead.", tone: 'error' });
         return;
       }
-      onTranscript(data.transcript);
+      onTranscript(data.transcript, data.request_id);
       setMessage({ text: 'Recording ready. Please check the words before saving.', tone: 'success' });
     } catch {
-      setMessage({ text: "We couldn't understand the recording. Please try again or type instead.", tone: 'error' });
+      setMessage({ text: receiptMessage(), tone: 'error' });
     } finally {
       form.delete('file');
       setTranscribing(false);
@@ -86,7 +94,7 @@ export function VoiceRecorder({ onTranscript }: { onTranscript: (transcript: str
         if (audio.size === 0) {
           chunksRef.current = [];
           recorderRef.current = null;
-          setMessage({ text: "We couldn't understand the recording. Please try again or type instead.", tone: 'error' });
+          setMessage({ text: 'No recording was sent. Please try again or type instead.', tone: 'error' });
           return;
         }
         void transcribe(audio);
