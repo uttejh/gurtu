@@ -1,6 +1,6 @@
 # Deployment checklist
 
-The app source is in the private `poulrohan23/gurtu` repository. The provided Supabase project URL and publishable key are in the ignored local `.env`. The app has not been deployed: the migrations are not applied, family Auth accounts are not provisioned, and no Cloudflare Pages URL exists yet. The two household time zones and account details still need to be entered through the masked setup script.
+The app source is in the private `poulrohan23/gurtu` repository. The Supabase project URL and publishable key are in the ignored local `.env`. Cloudflare Pages is live at [https://gurtu.pages.dev](https://gurtu.pages.dev), but the Supabase migrations have not been applied and family Auth accounts are not provisioned. The two household time zones and account details still need to be entered through the masked setup script.
 
 ## 1. Prepare local configuration
 
@@ -19,7 +19,7 @@ The secret key is for the local provisioning script only. Keep the browser key o
 
 1. Create or choose a Supabase project on the Free plan if it meets the family's needs. This app does not upgrade a plan.
 2. Copy the project URL, publishable key, and secret key into the local `.env` variables above.
-3. Configure email/password Auth. Disable public sign-ups. Add the eventual production Pages URL and `https://YOUR_PAGES_HOST/reset-password` to allowed redirect URLs.
+3. Configure email/password Auth. Disable public sign-ups. Add `https://gurtu.pages.dev` and `https://gurtu.pages.dev/reset-password` to allowed redirect URLs.
 4. Authenticate the CLI and apply migrations:
 
    ```sh
@@ -37,7 +37,7 @@ The secret key is for the local provisioning script only. Keep the browser key o
    supabase functions deploy ask-memory
    ```
 
-7. Set `APP_ORIGINS` in `.env` to the exact deployed site origin when known, then run `npm run secrets:push`. The upload includes only OpenAI key/model values and `APP_ORIGINS`.
+7. Confirm `APP_ORIGINS` in `.env` contains `https://gurtu.pages.dev` and `http://localhost:5173`, then run `npm run secrets:push`. The upload includes only OpenAI key/model values and `APP_ORIGINS`.
 8. Confirm function JWT verification remains enabled and verify production functions accept an authenticated Supabase session only.
 
 ## 3. Create the family accounts and directory
@@ -52,16 +52,11 @@ The interactive script creates five email/password Auth users, one shared profil
 
 Confirm all six person names and alias lists before provision. If setup fails after creating new Auth users, the script removes only the users created by that run.
 
-## 4. Connect private GitHub source to Cloudflare Pages
+## 4. Cloudflare Pages deployment
 
-The private `gurtu` repository already exists with the app source:
+Cloudflare Pages is connected to the private `poulrohan23/gurtu` repository and deploys `main` automatically. The project is configured with build command `npm run build`, output directory `dist`, root directory `/`, and the public Supabase URL and publishable key for production and preview builds. The production URL is [https://gurtu.pages.dev](https://gurtu.pages.dev); its first production build succeeded.
 
-1. In Cloudflare, open **Workers & Pages → Create application → Pages → Import an existing Git repository** and authorize the GitHub repository.
-2. Select `gurtu` and use production branch `main`.
-3. Set build command `npm run build`; output directory `dist`; root directory `/`.
-4. Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` in the production and preview build environments.
-5. Do not add `OPENAI_API_KEY` or `SUPABASE_SECRET_KEY` to Pages build variables.
-6. Deploy and verify the generated `https://*.pages.dev` URL, `/login`, password reset redirect, and protected route behavior. Add that exact origin to Supabase Auth redirect URLs and Edge Function `APP_ORIGINS`.
+The browser has received only the Supabase URL and publishable key. Do not add `OPENAI_API_KEY` or `SUPABASE_SECRET_KEY` to Pages build variables. After the Supabase project is linked, add `https://gurtu.pages.dev` and `https://gurtu.pages.dev/reset-password` to Supabase Auth's allowed redirect URLs. The ignored local `.env` now lists `https://gurtu.pages.dev` and `http://localhost:5173` in `APP_ORIGINS`; `npm run secrets:push` will upload that list with the OpenAI function secrets.
 
 Cloudflare's current Pages docs list Vite's build command and output directory as `npm run build` and `dist`; the repository includes `_redirects` for the SPA. See [Cloudflare Pages Git integration](https://developers.cloudflare.com/pages/get-started/git-integration/) and [build configuration](https://developers.cloudflare.com/pages/configuration/build-configuration/).
 
