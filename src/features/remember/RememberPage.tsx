@@ -60,6 +60,8 @@ function selectedPeopleFromProposal(proposal: ActionProposal, text: string, peop
 export function RememberPage() {
   const { people, loading: peopleLoading, failed: peopleFailed } = useFamilyPeople();
   const [text, setText] = useState('');
+  const [originalText, setOriginalText] = useState('');
+  const [inputType, setInputType] = useState<'text' | 'voice'>('text');
   const [proposal, setProposal] = useState<ActionProposal | null>(null);
   const [requestId, setRequestId] = useState<string | null>(null);
   const [selectedPeople, setSelectedPeople] = useState<string[]>([]);
@@ -69,8 +71,9 @@ export function RememberPage() {
 
   function updateText(event: ChangeEvent<HTMLTextAreaElement>) {
     setText(event.target.value);
+    if (inputType === 'text') setOriginalText(event.target.value);
     setProposal(null);
-    setRequestId(null);
+    if (inputType === 'text') setRequestId(null);
     setError(null);
     setSuccess(null);
   }
@@ -88,10 +91,16 @@ export function RememberPage() {
     setBusy(true);
     setError(null);
     setSuccess(null);
-    const idempotencyKey = crypto.randomUUID();
+    const idempotencyKey = requestId ?? crypto.randomUUID();
+    setRequestId(idempotencyKey);
     try {
       const { data, error: functionError } = await supabase.functions.invoke('process-memory-input', {
-        body: { mode: 'interpret', original_text: correctedText, request_id: idempotencyKey },
+        body: {
+          mode: 'interpret', input_type: inputType,
+          original_text: originalText.trim() || correctedText,
+          corrected_text: correctedText,
+          request_id: idempotencyKey,
+        },
       });
       if (functionError) throw functionError;
       const parsed = ActionProposalSchema.safeParse(data?.proposal);
@@ -100,7 +109,7 @@ export function RememberPage() {
       setRequestId(idempotencyKey);
       setSelectedPeople(selectedPeopleFromProposal(parsed.data, correctedText, people));
     } catch (cause) {
-      setError(friendlyError(cause, 'We could not understand that. Your information was not saved. Please try again.'));
+      setError(friendlyError(cause, 'We could not prepare a review. No family memory was saved. If Gurtu received the request, it remains available as an incomplete capture. Please try again.'));
     } finally {
       setBusy(false);
     }
@@ -115,19 +124,36 @@ export function RememberPage() {
       const { data, error: functionError } = await supabase.functions.invoke('process-memory-input', {
         body: {
           mode: 'execute',
-          original_text: text.trim(),
           request_id: requestId,
-          proposal,
           person_ids: selectedPeople,
           confirmed: true,
         },
       });
       if (functionError || data?.ok !== true) throw functionError ?? new Error('The save did not complete.');
       setSuccess(data.message || 'Saved to your family memory.');
+      setText('');
+      setOriginalText('');
+      setInputType('text');
       setProposal(null);
       setRequestId(null);
+      setSelectedPeople([]);
     } catch (cause) {
-      setError(friendlyError(cause, "Your information wasn't saved. Please try again."));
+      const { data: capture } = await supabase.from('capture_requests')
+        .select('processing_status')
+        .eq('request_id', requestId)
+        .maybeSingle();
+      if (capture?.processing_status === 'succeeded') {
+        setSuccess('Saved to your family memory.');
+        setText('');
+        setOriginalText('');
+        setInputType('text');
+        setProposal(null);
+        setRequestId(null);
+        setSelectedPeople([]);
+        setBusy(false);
+        return;
+      }
+      setError(friendlyError(cause, 'The save did not finish. If Gurtu received it, the request remains available for review. Please try again.'));
     } finally {
       setBusy(false);
     }
@@ -137,10 +163,12 @@ export function RememberPage() {
     <PageLayout title="Remember something" backTo="/">
       <section className="page-section remember-section" aria-labelledby="remember-instruction">
         <h3 id="remember-instruction" className="section-lead">Speak or type what you want your family to remember.</h3>
-        <VoiceRecorder onTranscript={(transcript) => {
+        <VoiceRecorder onTranscript={(transcript, voiceRequestId) => {
           setText(transcript);
+          setOriginalText(transcript);
+          setInputType('voice');
+          setRequestId(voiceRequestId);
           setProposal(null);
-          setRequestId(null);
           setError(null);
           setSuccess(null);
         }} />

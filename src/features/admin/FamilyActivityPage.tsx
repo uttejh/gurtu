@@ -70,6 +70,15 @@ function errorText(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback;
 }
 
+function isMissingFactor(error: unknown) {
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === 'mfa_factor_not_found'
+    || /factor not found/iu.test(errorText(error, ''));
+}
+
+function qrImageSource(value: string) {
+  return value.startsWith('data:image/') ? value : `data:image/svg+xml;charset=utf-8,${encodeURIComponent(value)}`;
+}
+
 function selectedNames(ids: string[], people: Person[]) {
   const peopleById = new Map(people.map((person) => [person.id, person.display_name]));
   return ids.map((id) => peopleById.get(id)).filter((name): name is string => Boolean(name));
@@ -143,7 +152,6 @@ async function getRecordDetails(capture: Capture, householdsById: Map<string, st
 function MfaGate({ onReady }: { onReady: () => void }) {
   const [stage, setStage] = useState<'checking' | 'setup' | 'enrollment' | 'challenge' | 'incomplete' | 'error'>('checking');
   const [factorId, setFactorId] = useState('');
-  const [unfinishedFactorId, setUnfinishedFactorId] = useState('');
   const [qrCode, setQrCode] = useState('');
   const [secret, setSecret] = useState('');
   const [code, setCode] = useState('');
@@ -164,14 +172,21 @@ function MfaGate({ onReady }: { onReady: () => void }) {
     const verified = data.totp.find((factor) => factor.status === 'verified');
     if (verified) {
       setFactorId(verified.id);
+      setQrCode('');
+      setSecret('');
       setStage('challenge');
       return;
     }
     const unfinished = data.all.find((factor) => factor.factor_type === 'totp' && factor.status === 'unverified');
     if (unfinished) {
-      setUnfinishedFactorId(unfinished.id);
+      setFactorId('');
+      setQrCode('');
+      setSecret('');
       setStage('incomplete');
     } else {
+      setFactorId('');
+      setQrCode('');
+      setSecret('');
       setStage('setup');
     }
   }, [onReady]);
@@ -191,9 +206,17 @@ function MfaGate({ onReady }: { onReady: () => void }) {
     setBusy(true);
     setMessage('');
     try {
-      if (replaceUnfinished && unfinishedFactorId) {
-        const { error: removeError } = await supabase.auth.mfa.unenroll({ factorId: unfinishedFactorId });
-        if (removeError) throw removeError;
+      setFactorId('');
+      setQrCode('');
+      setSecret('');
+      if (replaceUnfinished) {
+        const { data: existingFactors, error: listError } = await supabase.auth.mfa.listFactors();
+        if (listError) throw listError;
+        const unfinishedFactors = existingFactors.all.filter((factor) => factor.factor_type === 'totp' && factor.status === 'unverified');
+        for (const factor of unfinishedFactors) {
+          const { error: removeError } = await supabase.auth.mfa.unenroll({ factorId: factor.id });
+          if (removeError && !isMissingFactor(removeError)) throw removeError;
+        }
       }
       const { data, error } = await supabase.auth.mfa.enroll({ factorType: 'totp', friendlyName: 'Gurtu administrator' });
       if (error) throw error;
@@ -221,7 +244,20 @@ function MfaGate({ onReady }: { onReady: () => void }) {
       setCode('');
       await inspectFactors();
     } catch (error) {
-      setMessage(errorText(error, 'That verification code could not be confirmed. Check it and try again.'));
+      if (isMissingFactor(error)) {
+        setFactorId('');
+        setQrCode('');
+        setSecret('');
+        setMessage('This authenticator setup is no longer active. Start a fresh setup and scan its new code.');
+        try {
+          await inspectFactors();
+        } catch (refreshError) {
+          setMessage(errorText(refreshError, 'Authenticator setup could not be refreshed. Please reload and try again.'));
+          setStage('error');
+        }
+      } else {
+        setMessage(errorText(error, 'That verification code could not be confirmed. Check it and try again.'));
+      }
     } finally {
       setBusy(false);
     }
@@ -246,7 +282,7 @@ function MfaGate({ onReady }: { onReady: () => void }) {
       <section className="admin-mfa-panel" aria-labelledby="admin-mfa-title">
         <h3 id="admin-mfa-title">Add Gurtu to your authenticator</h3>
         <p>Scan this code with an authenticator app, then enter its six-digit code.</p>
-        {qrCode ? <img className="admin-mfa-qr" alt="Authenticator setup QR code" src={`data:image/svg+xml;utf-8,${encodeURIComponent(qrCode)}`} /> : null}
+        {qrCode ? <img className="admin-mfa-qr" alt="Authenticator setup QR code" src={qrImageSource(qrCode)} /> : null}
         <p className="admin-mfa-secret"><span>Manual setup key</span><code>{secret}</code></p>
         <MfaCodeForm code={code} setCode={setCode} busy={busy} message={message} onSubmit={verify} buttonLabel="Verify and open Family Activity" />
       </section>
