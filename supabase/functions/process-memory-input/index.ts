@@ -1,6 +1,7 @@
 import { Temporal } from 'npm:@js-temporal/polyfill@0.5.1';
 import { z } from 'npm:zod@4.6.7';
 import { ActionOutputSchema, validateProposal, type ActionProposal } from '../_shared/actions.ts';
+import { completedCaptureResult } from '../_shared/capture-result.ts';
 import { parseUntimedFlight } from '../_shared/flight.ts';
 import { consumeLimit, HttpError, readJson, withRequest, type RequestContext } from '../_shared/http.ts';
 import { openAIJson } from '../_shared/openai.ts';
@@ -304,9 +305,14 @@ async function handler(context: RequestContext, request: Request) {
 
   if (!input.confirmed) throw new HttpError(400, 'Confirm the action before saving it.');
   const { data: capture, error: captureError } = await context.supabase.from('capture_requests')
-    .select('input_type,original_transcript,corrected_transcript,detected_intent,extracted_payload,processing_status')
+    .select('input_type,original_transcript,corrected_transcript,detected_intent,extracted_payload,processing_status,result_entity_type,result_entity_id')
     .eq('request_id', input.request_id).eq('submitted_by_user_id', context.user.id).maybeSingle();
-  if (captureError || !capture || !['awaiting_confirmation', 'operation_pending', 'operation_failed'].includes(capture.processing_status)) {
+  if (captureError || !capture) {
+    throw new HttpError(409, 'This request is no longer ready to save. Please review it again.');
+  }
+  const completedResult = completedCaptureResult(capture as Parameters<typeof completedCaptureResult>[0]);
+  if (completedResult) return completedResult;
+  if (!['awaiting_confirmation', 'operation_pending', 'operation_failed'].includes(capture.processing_status)) {
     throw new HttpError(409, 'This request is no longer ready to save. Please review it again.');
   }
   let proposal: ActionProposal;
