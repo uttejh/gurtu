@@ -26,6 +26,18 @@ async function loadFamilyPeople(context: RequestContext): Promise<PersonRow[]> {
   return (data ?? []) as unknown as PersonRow[];
 }
 
+async function loadCalendarEventHints(context: RequestContext): Promise<string> {
+  const { data, error } = await context.supabase.from('events')
+    .select('title,starts_at,timezone,is_all_day')
+    .eq('owner_household_id', context.profile.household_id)
+    .order('starts_at', { ascending: true }).limit(80);
+  if (error) throw new HttpError(503, 'Your calendar is not available right now.');
+  return (data ?? []).map((event) => {
+    const local = Temporal.Instant.from(event.starts_at).toZonedDateTimeISO(event.timezone);
+    return `${event.title} | ${local.toPlainDate()} | ${event.is_all_day ? 'all day' : local.toPlainTime().toString({ smallestUnit: 'minute' })} | ${event.timezone}`;
+  }).join('\n');
+}
+
 async function selectedFamilyPeople(context: RequestContext, ids: string[]): Promise<PersonRow[]> {
   const unique = [...new Set(ids)];
   if (unique.length !== ids.length) throw new HttpError(400, 'Please review the family member selections.');
@@ -248,6 +260,24 @@ async function executeProposal(context: RequestContext, proposal: ActionProposal
       if (typeof updatedId !== 'string') throw new HttpError(503, 'The action result could not be confirmed. Please try again.');
       return { ok: true, message: `${proposal.event_title} was updated.`, result_entity_type: 'event', result_entity_id: updatedId };
     }
+    case 'delete_event': {
+      let query = supabase.from('events').select('id,title,starts_at,timezone')
+        .eq('owner_household_id', context.profile.household_id).eq('title', proposal.event_title).limit(3);
+      const { data: matches, error } = await query;
+      if (error || !matches?.length) throw new HttpError(404, 'That event could not be found in your household calendar.');
+      const datedMatches = proposal.local_date
+        ? matches.filter((event) => Temporal.Instant.from(event.starts_at).toZonedDateTimeISO(event.timezone).toPlainDate().toString() === proposal.local_date)
+        : matches;
+      if (datedMatches.length > 1) throw new HttpError(409, 'There is more than one matching event. Please include its date.');
+      if (!datedMatches.length) throw new HttpError(404, 'That event could not be found on that date.');
+      const { data: deletedId, error: deleteError } = await supabase.rpc('delete_gurtu_event', {
+        p_event_id: datedMatches[0].id,
+        p_request_id: requestId,
+      });
+      requireRpcSuccess(deleteError);
+      if (typeof deletedId !== 'string') throw new HttpError(503, 'The event removal could not be confirmed. Please try again.');
+      return { ok: true, message: `${proposal.event_title} was removed from your calendar.`, result_entity_type: 'event', result_entity_id: deletedId };
+    }
     case 'clarify':
       throw new HttpError(400, 'Please add the missing details before saving.');
   }
@@ -268,7 +298,11 @@ async function handler(context: RequestContext, request: Request) {
     console.info(JSON.stringify({ metric: 'database_write', operation: 'create_capture', duration_ms: Math.round(performance.now() - captureStartedAt), outcome: captureError ? 'error' : 'success' }));
     if (captureError) throw new HttpError(503, 'The request could not be safely recorded. Please try again.');
     try {
-      const [, people] = await Promise.all([consumeLimit(context, 'ai_interpret'), loadFamilyPeople(context)]);
+      const needsCalendarHints = /\b(delete|remove|cancel)\b|తొలగించ|రద్దు|చెరిప/iu.test(input.corrected_text);
+      const [, people, calendarHints] = await Promise.all([
+        consumeLimit(context, 'ai_interpret'), loadFamilyPeople(context),
+        needsCalendarHints ? loadCalendarEventHints(context) : Promise.resolve(''),
+      ]);
       const current = new Date();
       const currentTime = new Intl.DateTimeFormat('en', { dateStyle: 'full', timeStyle: 'short', timeZone: context.profile.timezone }).format(current);
       const currentLocalDate = Temporal.Now.zonedDateTimeISO(context.profile.timezone).toPlainDate().toString();
@@ -276,7 +310,7 @@ async function handler(context: RequestContext, request: Request) {
       const raw = directFlight ?? await openAIJson<unknown>({
         name: 'gurtu_memory_action',
         schema: ActionOutputSchema,
-        instructions: `You help a family preserve information in Telugu, English, or mixed Telugu-English. Read the user's exact words and choose one supported action. Never invent people, list names, event titles, or facts. Preserve Telugu script and the words as spoken. Respond to the user in the language they used, with a warm, natural, concise tone. If a detail is missing, ask one clear follow-up in that language. For an event date without a year, use the next upcoming occurrence of that month and day relative to the current local date. A missing event time is optional: create it as an all-day event and never ask for a time. A missing end time is optional. For a person-specific event, use that person's listed home time zone; otherwise use the current household time zone. If the date is genuinely missing or ambiguous, return clarify. If the input is a question rather than a clear request to save or change something, return clarify. Do not create reminders or notifications. Always include all schema fields; use null for unused strings/booleans and [] for unused arrays. People mentions must be names or aliases from the supplied directory. Current local date: ${currentLocalDate}. Current local time: ${currentTime}. Current household time zone: ${context.profile.timezone}. Family people (identity only):\n${personHint(people)}`,
+        instructions: `You help a family preserve information in Telugu, English, or mixed Telugu-English. Read the user's exact words and choose one supported action. Never invent people, list names, event titles, or facts. Preserve Telugu script and the words as spoken. Respond to the user in the language they used, with a warm, natural, concise tone. If a detail is missing, ask one clear follow-up in that language. For an event date without a year, use the next upcoming occurrence of that month and day relative to the current local date. A missing event time is optional: create it as an all-day event and never ask for a time. A missing end time is optional. For a person-specific event, use that person's listed home time zone; otherwise use the current household time zone. For an explicit request to delete or remove a calendar event, match it to the supplied calendar event directory and return that event's exact title and local date. Never invent an event title. If there is no clear match or more than one match, return clarify and ask one short question in the user's language. Do not delete or update an event when the request is unclear. If the input is a question rather than a clear request to save or change something, return clarify. Do not create reminders or notifications. Always include all schema fields; use null for unused strings/booleans and [] for unused arrays. People mentions must be names or aliases from the supplied directory. Current local date: ${currentLocalDate}. Current local time: ${currentTime}. Current household time zone: ${context.profile.timezone}. Family people (identity only):\n${personHint(people)}\nCalendar events (title, local date, time, time zone):\n${calendarHints || '(none)'}`,
         userContent: input.corrected_text,
         maxOutputTokens: 1600,
       });

@@ -22,7 +22,7 @@ function recordingFileName(type: string): string {
   return type.includes('mp4') ? 'family-memory.m4a' : 'family-memory.webm';
 }
 
-export function VoiceRecorder({ onTranscript }: { onTranscript: (transcript: string, requestId: string) => void }) {
+export function VoiceRecorder({ onTranscript, compact = false }: { onTranscript: (transcript: string, requestId: string) => void; compact?: boolean }) {
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<BlobPart[]>([]);
@@ -121,19 +121,20 @@ export function VoiceRecorder({ onTranscript }: { onTranscript: (transcript: str
   return (
     <div className="voice-capture">
       <button
-        className={`record-button${recording ? ' is-recording' : ''}`}
+        className={`record-button${recording ? ' is-recording' : ''}${compact ? ' record-button--compact' : ''}`}
         type="button"
         onClick={recording ? stopRecording : startRecording}
         disabled={transcribing}
         aria-label={recording ? 'Stop recording' : transcribing ? 'Transcribing recording' : 'Start speaking'}
       >
         {recording ? <Stop aria-hidden="true" weight="fill" /> : <Microphone aria-hidden="true" weight="regular" />}
+        {compact ? <span>{recording ? 'Stop' : transcribing ? 'Listening' : 'Speak'}</span> : null}
       </button>
-      <div className="voice-capture__copy" aria-live="polite">
+      {!compact ? <div className="voice-capture__copy" aria-live="polite">
         <strong>{recording ? 'Listening…' : transcribing ? 'Transcribing…' : 'Start speaking'}</strong>
         <span>{recording ? 'Tap Stop when you are finished.' : 'Speak naturally in Telugu or English.'}</span>
-      </div>
-      {message ? <StatusMessage tone={message.tone}>{message.text}</StatusMessage> : null}
+      </div> : null}
+      {message && (!compact || message.tone === 'error') ? <StatusMessage tone={message.tone}>{message.text}</StatusMessage> : null}
     </div>
   );
 }

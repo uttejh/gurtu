@@ -6,7 +6,7 @@ import { useAuth } from '../../app/useAuth';
 import { supabase } from '../../lib/supabase';
 
 type CaptureStatus = 'transcribing' | 'received' | 'interpreting' | 'transcription_failed' | 'interpretation_failed' | 'needs_clarification' | 'awaiting_confirmation' | 'operation_pending' | 'operation_failed' | 'succeeded' | 'cancelled';
-type Intent = 'save_memory' | 'save_item_location' | 'create_list' | 'add_list_items' | 'update_list_item' | 'remove_list_item' | 'create_event' | 'update_event' | 'clarify';
+type Intent = 'save_memory' | 'save_item_location' | 'create_list' | 'add_list_items' | 'update_list_item' | 'remove_list_item' | 'create_event' | 'update_event' | 'delete_event' | 'clarify';
 
 interface Capture {
   id: string;
@@ -50,7 +50,7 @@ interface RecordDetails { heading: string; facts: string[]; people: string[]; lo
 const INTENT_LABEL: Record<Intent, string> = {
   save_memory: 'Save memory', save_item_location: 'Save item location', create_list: 'Create list',
   add_list_items: 'Add list items', update_list_item: 'Update list item', remove_list_item: 'Remove list item',
-  create_event: 'Create event', update_event: 'Update event', clarify: 'Needs clarification',
+  create_event: 'Create event', update_event: 'Update event', delete_event: 'Delete event', clarify: 'Needs clarification',
 };
 const STATUS_LABEL: Record<CaptureStatus, string> = {
   transcribing: 'Transcribing', received: 'Received', interpreting: 'Interpreting',

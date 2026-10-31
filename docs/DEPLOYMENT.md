@@ -17,7 +17,7 @@ The secret key is for the local provisioning script only. Keep the browser key o
 
 ## 2. Create and configure Supabase
 
-The hosted project `hozmffrhhzwragtyafia` is linked in the local checkout. All four migrations are applied. The production Auth URL and recovery redirect are configured, public sign-up is disabled, and TOTP enrollment and verification are enabled. The three Edge Functions are active with JWT verification, and the OpenAI key, model names, and allowed origins are set as function secrets.
+The hosted project `hozmffrhhzwragtyafia` is linked in the local checkout. Migrations through `20261030000170` are applied. The production Auth URL and recovery redirect are configured, public sign-up is disabled, and TOTP enrollment and verification are enabled. The three Edge Functions are active with JWT verification, and the OpenAI key, model names, and allowed origins are set as function secrets.
 
 To apply future migrations and update functions:
 

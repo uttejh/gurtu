@@ -77,6 +77,12 @@ const UpdateEvent = z.object({
   people_mentions: PersonMentions,
 }).strict();
 
+const DeleteEvent = z.object({
+  action: z.literal('delete_event'),
+  event_title: PlainText,
+  local_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/u).nullable(),
+}).strict();
+
 const Clarify = z.object({
   action: z.literal('clarify'),
   question: z.string().trim().min(1).max(240),
@@ -91,6 +97,7 @@ export const ActionProposalSchema = z.discriminatedUnion('action', [
   RemoveListItem,
   CreateEvent,
   UpdateEvent,
+  DeleteEvent,
   Clarify,
 ]);
 

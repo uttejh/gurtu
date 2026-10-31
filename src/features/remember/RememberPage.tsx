@@ -20,6 +20,7 @@ function proposalHeading(proposal: ActionProposal): string {
     case 'remove_list_item': return `Remove ${proposal.item_text} from ${proposal.list_title}`;
     case 'create_event': return `Add ${proposal.title} to the calendar`;
     case 'update_event': return `Update ${proposal.event_title}`;
+    case 'delete_event': return `Delete ${proposal.event_title} from the calendar`;
     case 'clarify': return proposal.question;
   }
 }
@@ -37,6 +38,7 @@ function proposalDetails(proposal: ActionProposal): string[] {
       proposal.end_time_assumed ? 'The end time will be set to one hour after the start.' : '',
     ].filter(Boolean);
     case 'update_event': return [proposal.all_day ? `${proposal.local_date} · All day` : `${proposal.local_date} · ${proposal.local_time} · ${proposal.time_zone}`];
+    case 'delete_event': return [proposal.local_date ? `Event date: ${proposal.local_date}` : ''];
     case 'clarify': return [];
   }
 }
@@ -203,7 +205,7 @@ export function RememberPage() {
             />
             <div className="form-actions">
               <button className="button button--primary" type="button" onClick={confirmAction} disabled={busy}>
-                {busy ? 'Saving…' : 'Confirm and save'}
+                {busy ? 'Please wait…' : proposal.action === 'delete_event' ? 'Confirm action' : 'Confirm and save'}
               </button>
               <button className="button button--secondary" type="button" onClick={() => setProposal(null)} disabled={busy}>Edit words</button>
             </div>

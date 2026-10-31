@@ -17,11 +17,12 @@ const Proposal = z.discriminatedUnion('action', [
     if (event.all_day && (event.local_time || event.end_time)) context.addIssue({ code: 'custom', path: ['local_time'], message: 'All-day events cannot include times.' });
   }),
   z.object({ action: z.literal('update_event'), event_title: Text.max(160), local_date: DateString, local_time: TimeString.nullable(), time_zone: z.string().min(1).max(80), all_day: z.boolean(), people_mentions: Mentions }).strict(),
+  z.object({ action: z.literal('delete_event'), event_title: Text.max(160), local_date: DateString.nullable() }).strict(),
   z.object({ action: z.literal('clarify'), question: z.string().trim().min(1).max(240) }).strict(),
 ]);
 
 const properties = {
-  action: { type: 'string', enum: ['save_memory', 'save_item_location', 'create_list', 'add_list_items', 'update_list_item', 'remove_list_item', 'create_event', 'update_event', 'clarify'] },
+  action: { type: 'string', enum: ['save_memory', 'save_item_location', 'create_list', 'add_list_items', 'update_list_item', 'remove_list_item', 'create_event', 'update_event', 'delete_event', 'clarify'] },
   original_text: { type: ['string', 'null'] },
   summary: { type: ['string', 'null'] },
   item_name: { type: ['string', 'null'] },
@@ -86,6 +87,7 @@ export function validateProposal(value: unknown): ActionProposal {
     remove_list_item: ['list_title', 'item_text', 'people_mentions'],
     create_event: ['title', 'local_date', 'local_time', 'end_time', 'time_zone', 'all_day', 'people_mentions', 'end_time_assumed'],
     update_event: ['event_title', 'local_date', 'local_time', 'time_zone', 'all_day', 'people_mentions'],
+    delete_event: ['event_title', 'local_date'],
     clarify: ['question'],
   };
   for (const key of keys[output.action] ?? []) fields[key] = output[key as keyof ActionOutput];

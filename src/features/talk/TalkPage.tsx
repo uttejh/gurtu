@@ -33,6 +33,7 @@ interface PendingConfirmation {
   input: string;
   originalInput: string;
   inputType: 'text' | 'voice';
+  confirmationMessage: string;
 }
 
 interface RetryRequest {
@@ -48,8 +49,8 @@ interface RetryRequest {
 }
 
 function isQuestion(value: string): boolean {
-  return /\?|\b(where|when|who|what|why|how|which)\b/iu.test(value.trim())
-    || /(ఎక్కడ(?:ికి|ినుంచి)?|ఎప్పుడు|ఎవరు|ఏమిటి|ఏమి|ఏంటి|ఎలా|ఎవరి|ఎవరికి|ఎందుకు|ఎంత|ఏది|ఏవి|ఉందా|వుందా|తెలుసా|చెప్పగలవా|చెప్పగలరా)(?:[.!?\s]|$)/u.test(value);
+  return /\?|\b(where|when|who|what|why|how|which|explain|describe|summarize|tell me about|tell me how|can you|could you|do you know)\b/iu.test(value.trim())
+    || /(ఎక్కడ(?:ికి|ినుంచి)?|ఎప్పుడు|ఎవరు|ఏమిటి|ఏమి|ఏంటి|ఎలా|ఎవరి|ఎవరికి|ఎందుకు|ఎంత|ఏది|ఏవి|ఉందా|వుందా|తెలుసా|చెప్పగలవా|చెప్పగలరా|వివరించు|చెప్పు)(?:[.!?\s]|$)/u.test(value);
 }
 
 function eventDate(value: string): string {
@@ -84,6 +85,7 @@ function successMessage(input: string, proposal: ActionProposal): string | undef
     case 'update_list_item': return `సరే — ${proposal.list_title} జాబితాను నవీకరించాను.`;
     case 'remove_list_item': return undefined;
     case 'update_event': return `సరే — ${proposal.event_title} ఈవెంట్‌ను నవీకరించాను.`;
+    case 'delete_event': return `సరే — ${proposal.event_title} ఈవెంట్‌ను క్యాలెండర్ నుంచి తొలగించాను.`;
     case 'clarify': return undefined;
   }
 }
@@ -92,6 +94,13 @@ function removalQuestion(input: string, item: string, list: string): string {
   return /[\u0C00-\u0C7F]/u.test(input)
     ? `“${item}”ను ${list} జాబితా నుంచి తీసివేయాలా?`
     : `Would you like me to remove “${item}” from ${list}?`;
+}
+
+function deleteEventQuestion(input: string, title: string, date: string | null): string {
+  const when = date ? ` (${eventDate(date)})` : '';
+  return /[\u0C00-\u0C7F]/u.test(input)
+    ? `“${title}”${when} ఈవెంట్‌ను క్యాలెండర్ నుంచి తొలగించాలా?`
+    : `Should I delete “${title}”${when} from your calendar?`;
 }
 
 export function TalkPage() {
@@ -197,9 +206,12 @@ export function TalkPage() {
       saveMessage({ role: 'assistant', content: proposal.question });
       return;
     }
-    if (proposal.action === 'remove_list_item') {
-      setPending({ requestId, personIds: peopleMentioned, input, originalInput, inputType: sourceType });
-      saveMessage({ role: 'assistant', content: removalQuestion(input, proposal.item_text, proposal.list_title) });
+    if (proposal.action === 'remove_list_item' || proposal.action === 'delete_event') {
+      const confirmationMessage = proposal.action === 'remove_list_item'
+        ? removalQuestion(input, proposal.item_text, proposal.list_title)
+        : deleteEventQuestion(input, proposal.event_title, proposal.local_date);
+      setPending({ requestId, personIds: peopleMentioned, input, originalInput, inputType: sourceType, confirmationMessage });
+      saveMessage({ role: 'assistant', content: confirmationMessage });
       return;
     }
     const successContent = successMessage(input, proposal);
@@ -287,8 +299,12 @@ export function TalkPage() {
         body: { mode: 'execute', request_id: pending.requestId, person_ids: pending.personIds, confirmed: true },
       });
       if (invokeError || data?.ok !== true) throw invokeError ?? new Error('The item could not be removed.');
-      const responseText = /[\u0C00-\u0C7F]/u.test(pending.input) ? 'సరే — ఆ అంశాన్ని జాబితా నుంచి తీసివేశాను.' : data.message || 'The list was updated.';
-      saveMessage({ role: 'assistant', content: responseText, result_type: 'list', result_id: data.result_entity_id });
+      const isTelugu = /[\u0C00-\u0C7F]/u.test(pending.input);
+      const isEventDeletion = /calendar|క్యాలెండర్/u.test(pending.confirmationMessage);
+      const responseText = isEventDeletion
+        ? (isTelugu ? 'సరే — ఈవెంట్‌ను క్యాలెండర్ నుంచి తొలగించాను.' : data.message || 'The event was deleted from your calendar.')
+        : (isTelugu ? 'సరే — ఆ అంశాన్ని జాబితా నుంచి తీసివేశాను.' : data.message || 'The list was updated.');
+      saveMessage({ role: 'assistant', content: responseText, result_type: isEventDeletion ? 'event' : 'list', result_id: data.result_entity_id });
       setPending(null);
       setRetryRequest(null);
     } catch (cause) {
@@ -298,9 +314,8 @@ export function TalkPage() {
   }
 
   return (
-    <PageLayout title="Talk to Gurtu" backTo="/">
+    <PageLayout backTo="/">
       <section className="talk-section" aria-label="Conversation with Gurtu">
-        <p className="section-lead">Tell me something, ask a question, update a list or add an event.</p>
         <p className="talk-privacy-note">Your conversation is private to you. Anything you save becomes part of your family records.</p>
         <div className="talk-messages" aria-live="polite">
           {historyLoading ? <p className="muted-copy">Loading your conversation…</p> : null}
@@ -311,7 +326,7 @@ export function TalkPage() {
               {message.result_type === 'event' && message.result_id ? <Link className="quiet-link" to={`/calendar?edit=${encodeURIComponent(message.result_id)}`}>Edit event</Link> : null}
               {message.result_type === 'list' && message.result_id ? <Link className="quiet-link" to="/lists">View lists</Link> : null}
               {message.sources?.length ? <div className="talk-sources"><span>From what your family saved</span>{message.sources.map((source) => <blockquote key={source.id}><p>{source.original_text}</p><time>{new Intl.DateTimeFormat('en', { dateStyle: 'medium' }).format(new Date(source.created_at))}</time></blockquote>)}</div> : null}
-              {pending && message.role === 'assistant' && message.content.startsWith('Do you want me to remove') ? <div className="form-actions"><button type="button" className="button button--primary" onClick={() => void confirmRemoval()} disabled={busy}>Yes, remove it</button><button type="button" className="button button--secondary" onClick={() => setPending(null)} disabled={busy}>Keep it</button></div> : null}
+              {pending && message.role === 'assistant' && message.content === pending.confirmationMessage ? <div className="form-actions"><button type="button" className="button button--primary" onClick={() => void confirmRemoval()} disabled={busy}>Yes, proceed</button><button type="button" className="button button--secondary" onClick={() => setPending(null)} disabled={busy}>Keep it</button></div> : null}
             </article>
           ))}
           {busy ? <p className="talk-thinking">Gurtu is thinking…</p> : null}
@@ -319,9 +334,11 @@ export function TalkPage() {
         </div>
         {error ? <div className="talk-error"><StatusMessage tone="error">{error}</StatusMessage>{retryRequest ? <button className="button button--secondary talk-retry" type="button" onClick={() => void retryFailedMessage()} disabled={busy}>{busy ? 'Trying again…' : 'Try again'}</button> : null}</div> : null}
         <form className="talk-composer" onSubmit={(event) => void send(event)}>
-          <VoiceRecorder onTranscript={(transcript, requestId) => { setText(transcript); setVoiceOriginalText(transcript); setVoiceRequestId(requestId); setInputType('voice'); setError(null); }} />
           <textarea className="text-area talk-input" aria-label="Message to Gurtu" rows={2} maxLength={8000} placeholder="Type in Telugu or English…" value={text} onChange={(event) => { setText(event.target.value); if (inputType !== 'voice') setInputType('text'); }} />
-          <button className="button button--primary talk-send" type="submit" disabled={busy || !text.trim()}><PaperPlaneRight aria-hidden="true" /><span>Send</span></button>
+          <div className="talk-composer__actions">
+            <VoiceRecorder compact onTranscript={(transcript, requestId) => { setText(transcript); setVoiceOriginalText(transcript); setVoiceRequestId(requestId); setInputType('voice'); setError(null); }} />
+            <button className="button button--primary talk-send" type="submit" disabled={busy || !text.trim()}><PaperPlaneRight aria-hidden="true" /><span>Send</span></button>
+          </div>
         </form>
       </section>
     </PageLayout>

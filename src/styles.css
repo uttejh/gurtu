@@ -496,10 +496,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .calendar-all-day { margin-top: 4px; }
 .calendar-zone-hint { margin: 0; }
 
-.talk-section { display: flex; min-height: min(72vh, 940px); flex-direction: column; margin-top: 16px; }
-.talk-section > .section-lead { margin-bottom: 14px; }
+.talk-section { display: flex; height: min(72vh, 940px); min-height: 400px; flex-direction: column; margin-top: 16px; }
 .talk-privacy-note { margin: -8px 0 4px; color: var(--muted); font-size: 14px; line-height: 1.4; }
-.talk-messages { display: flex; flex: 1; min-height: 300px; flex-direction: column; gap: 16px; overflow-y: auto; padding: 12px 0 22px; }
+.talk-messages { display: flex; flex: 1; min-height: 0; flex-direction: column; gap: 16px; overflow-y: auto; overscroll-behavior: contain; padding: 12px 0 22px; }
 .talk-empty, .talk-thinking { margin: auto 0; color: var(--secondary); font-size: 20px; }
 .talk-thinking { margin: 0; }
 .talk-message { max-width: min(84%, 900px); padding: 17px 20px; border: 1px solid #282828; border-radius: 20px; background: #101010; }
@@ -512,16 +511,14 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .talk-sources blockquote { margin: 0; padding: 10px 12px; border-left: 2px solid #777; background: #090909; }
 .talk-sources blockquote p { margin: 0 0 6px; font-size: 16px; line-height: 1.45; white-space: pre-wrap; }
 .talk-sources time { color: var(--muted); font-size: 13px; }
-.talk-composer { position: sticky; bottom: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; padding: 14px 0 2px; border-top: 1px solid #242424; background: #000; }
-.talk-composer .voice-capture { grid-column: 1 / -1; display: grid; grid-template-columns: 62px minmax(0, 1fr); align-items: center; gap: 8px 14px; margin: 0; }
-.talk-composer .record-button { width: 62px; height: 62px; flex: 0 0 62px; }
-.talk-composer .voice-capture__copy { min-width: 0; }
-.talk-composer .voice-capture__copy strong { font-size: 18px; }
-.talk-composer .voice-capture__copy span { font-size: 16px; }
-.talk-composer .voice-capture .status-message { grid-column: 1 / -1; margin: 0; }
-.talk-input { min-width: 0; min-height: 70px; max-height: 190px; resize: vertical; }
-.talk-send { min-width: 110px; min-height: 64px; }
-.talk-send svg { flex: 0 0 auto; }
+.talk-composer { position: sticky; z-index: 2; bottom: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; padding: 12px 0 max(4px, env(safe-area-inset-bottom)); border-top: 1px solid #242424; background: #000; }
+.talk-input { width: 100%; min-width: 0; min-height: 66px; max-height: 160px; resize: none; }
+.talk-composer__actions { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+.talk-composer__actions .voice-capture { display: contents; }
+.talk-composer__actions .record-button--compact, .talk-send { width: 100%; min-width: 0; min-height: 64px; border-radius: 18px; font-size: 19px; font-weight: 600; }
+.talk-composer__actions .record-button--compact { display: flex; align-items: center; justify-content: center; gap: 10px; background: #171717; }
+.talk-composer__actions .record-button--compact svg, .talk-send svg { width: 23px; height: 23px; flex: 0 0 auto; }
+.talk-composer__actions .voice-capture .status-message { grid-column: 1 / -1; margin: 0; }
 .talk-error { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin-bottom: 10px; }
 .talk-error .status-message { flex: 1 1 100%; margin: 0; }
 .talk-retry { min-height: 48px; }
@@ -544,19 +541,15 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .calendar-agenda-card h3 { font-size: 20px; }
   .calendar-agenda-card p { font-size: 16px; }
   .calendar-add-button { min-height: 60px; font-size: 20px; }
-  .talk-section { min-height: calc(82vh - 120px); }
+  .talk-section { height: calc(100dvh - 250px); min-height: 430px; }
   .talk-privacy-note { font-size: 13px; }
-  .talk-messages { min-height: 250px; }
+  .talk-messages { min-height: 0; }
   .talk-message { max-width: 94%; padding: 14px 16px; border-radius: 17px; }
   .talk-message > p { font-size: 18px; }
   .talk-composer { gap: 8px; }
-  .talk-composer .voice-capture { grid-template-columns: 56px minmax(0, 1fr); gap: 8px 12px; }
-  .talk-composer .record-button { width: 56px; height: 56px; flex-basis: 56px; }
-  .talk-composer .voice-capture__copy strong { font-size: 17px; }
-  .talk-composer .voice-capture__copy span { font-size: 14px; line-height: 1.35; }
-  .talk-input { min-height: 84px; padding: 14px; font-size: 18px; line-height: 1.45; }
-  .talk-send { min-width: 92px; min-height: 84px; flex-direction: column; gap: 4px; padding: 10px; font-size: 16px; }
-  .talk-send svg { width: 20px; height: 20px; }
+  .talk-composer__actions { gap: 8px; }
+  .talk-input { min-height: 76px; padding: 13px; font-size: 17px; line-height: 1.4; }
+  .talk-composer__actions .record-button--compact, .talk-send { min-height: 62px; padding: 10px; font-size: 17px; }
   .talk-error { align-items: stretch; }
   .talk-retry { width: 100%; min-height: 52px; }
   .calendar-next-event { margin-top: -5px; padding: 14px; }
@@ -729,8 +722,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .calendar-month-controls { gap: 0; }
   .calendar-nav-button { min-width: 36px; }
   .calendar-today-button { min-width: 44px; font-size: 13px; }
-  .talk-composer { grid-template-columns: minmax(0, 1fr) 84px; gap: 7px; }
-  .talk-send { min-width: 84px; }
+  .talk-composer__actions { gap: 6px; }
+  .talk-composer__actions .record-button--compact, .talk-send { gap: 6px; font-size: 15px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
