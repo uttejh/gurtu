@@ -191,12 +191,13 @@ export function TalkPage() {
     originalInput = input,
     sourceType: 'text' | 'voice' = inputType,
     onPhase?: (phase: 'interpret' | 'execute', successContent?: string) => void,
+    conversationContext: ConversationTurn[] = [],
   ) {
     if (!supabase) throw new Error('Gurtu is not connected yet. Your message was not saved.');
     const peopleMentioned = findPeopleMentioned(input, identities()).map((person) => person.id);
     onPhase?.('interpret');
     const { data, error: invokeError } = await supabase.functions.invoke('process-memory-input', {
-      body: { mode: 'interpret', input_type: sourceType, original_text: originalInput, corrected_text: input, request_id: requestId },
+      body: { mode: 'interpret', input_type: sourceType, original_text: originalInput, corrected_text: input, request_id: requestId, conversation_context: conversationContext },
     });
     if (invokeError) throw invokeError;
     const parsed = ActionProposalSchema.safeParse(data?.proposal);
@@ -231,7 +232,7 @@ export function TalkPage() {
     setError(null);
     setRetryRequest(null);
     setText('');
-    const conversationContext = messages.slice(-4).map(({ role, content }) => ({ role, content: [...content].slice(0, 300).join('') }));
+    const conversationContext = messages.slice(-12).map(({ role, content }) => ({ role, content: [...content].slice(0, 500).join('') }));
     saveMessage({ role: 'user', content: value });
     const requestId = inputType === 'voice' && voiceRequestId ? voiceRequestId : crypto.randomUUID();
     let retryPhase: RetryRequest['phase'] = 'ask';
@@ -249,7 +250,7 @@ export function TalkPage() {
         });
       } else {
         retryPhase = 'interpret';
-        await runAction(value, requestId, originalInput, sourceType, (phase, successContent) => { retryPhase = phase; retrySuccessContent = successContent; });
+        await runAction(value, requestId, originalInput, sourceType, (phase, successContent) => { retryPhase = phase; retrySuccessContent = successContent; }, conversationContext);
       }
       setInputType('text');
       setVoiceOriginalText('');
@@ -278,7 +279,7 @@ export function TalkPage() {
       } else {
         await runAction(request.input, request.requestId, request.originalInput, request.inputType, (phase, successContent) => {
           setRetryRequest({ ...request, phase, successContent });
-        });
+        }, request.conversationContext ?? []);
       }
       setRetryRequest(null);
       setError(null);
