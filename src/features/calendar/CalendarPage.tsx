@@ -7,6 +7,7 @@ import { PeoplePicker } from '../shared/PeoplePicker';
 import { StatusMessage } from '../../components/StatusMessage';
 import { useFamilyPeople } from '../shared/useFamilyPeople';
 import { useMyProfile } from '../shared/useMyProfile';
+import { formatCalendarMonth } from '../../lib/calendar';
 import { formatEventDate, formatEventTime, localEventTimeToUtc } from '../../lib/events';
 import { supabase } from '../../lib/supabase';
 
@@ -114,7 +115,7 @@ export function CalendarPage() {
   }, [profile?.timezone]);
 
   const monthValue = Temporal.PlainYearMonth.from(month);
-  const monthLabel = monthValue.toLocaleString('en', { month: 'long', year: 'numeric' });
+  const monthLabel = formatCalendarMonth(monthValue);
   const monthDays = monthValue.daysInMonth;
   const firstDay = Temporal.PlainDate.from({ year: monthValue.year, month: monthValue.month, day: 1 }).dayOfWeek % 7;
   const calendarCells = [...Array(firstDay).fill(null), ...Array.from({ length: monthDays }, (_, index) => index + 1)];
