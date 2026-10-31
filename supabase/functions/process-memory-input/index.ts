@@ -2,7 +2,7 @@ import { Temporal } from 'npm:@js-temporal/polyfill@0.5.1';
 import { z } from 'npm:zod@4.6.7';
 import { ActionOutputSchema, validateProposal, type ActionProposal } from '../_shared/actions.ts';
 import { completedCaptureResult } from '../_shared/capture-result.ts';
-import { parseUntimedFlight } from '../_shared/flight.ts';
+import { parseSimpleUntimedEvent, parseUntimedFlight } from '../_shared/flight.ts';
 import { consumeLimit, HttpError, readJson, withRequest, type RequestContext } from '../_shared/http.ts';
 import { openAIJson } from '../_shared/openai.ts';
 
@@ -306,8 +306,9 @@ async function handler(context: RequestContext, request: Request) {
       const current = new Date();
       const currentTime = new Intl.DateTimeFormat('en', { dateStyle: 'full', timeStyle: 'short', timeZone: context.profile.timezone }).format(current);
       const currentLocalDate = Temporal.Now.zonedDateTimeISO(context.profile.timezone).toPlainDate().toString();
-      const directFlight = parseUntimedFlight(input.corrected_text, currentLocalDate, context.profile.timezone);
-      const raw = directFlight ?? await openAIJson<unknown>({
+      const directEvent = parseSimpleUntimedEvent(input.corrected_text, currentLocalDate, context.profile.timezone)
+        ?? parseUntimedFlight(input.corrected_text, currentLocalDate, context.profile.timezone);
+      const raw = directEvent ?? await openAIJson<unknown>({
         name: 'gurtu_memory_action',
         schema: ActionOutputSchema,
         instructions: `You help a family preserve information in Telugu, English, or mixed Telugu-English. Read the user's exact words and choose one supported action. Never invent people, list names, event titles, or facts. Preserve Telugu script and the words as spoken. Respond to the user in the language they used, with a warm, natural, concise tone. If a detail is missing, ask one clear follow-up in that language. For an event date without a year, use the next upcoming occurrence of that month and day relative to the current local date. A missing event time is optional: create it as an all-day event and never ask for a time. A missing end time is optional. For a person-specific event, use that person's listed home time zone; otherwise use the current household time zone. For an explicit request to delete or remove a calendar event, match it to the supplied calendar event directory and return that event's exact title and local date. Never invent an event title. If there is no clear match or more than one match, return clarify and ask one short question in the user's language. Do not delete or update an event when the request is unclear. If the input is a question rather than a clear request to save or change something, return clarify. Do not create reminders or notifications. Always include all schema fields; use null for unused strings/booleans and [] for unused arrays. People mentions must be names or aliases from the supplied directory. Current local date: ${currentLocalDate}. Current local time: ${currentTime}. Current household time zone: ${context.profile.timezone}. Family people (identity only):\n${personHint(people)}\nCalendar events (title, local date, time, time zone):\n${calendarHints || '(none)'}`,
