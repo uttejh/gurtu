@@ -5,7 +5,7 @@ The family is provisioned with three private households and six people. The pare
 | Household | Login accounts | Time zone |
 | --- | --- | --- |
 | Parents | One shared account for both parents | `Asia/Kolkata` |
-| Household 2 (`chinnodu`) | Chinna and Ash each have a login | `Asia/Kolkata` |
+| Household 2 (`chinnodu`) | Chinna and Ash each have a login | `America/Toronto` |
 | Household 3 (`peddodu`) | Nani and Sush each have a login | `America/Chicago` |
 
 ## Before provisioning a new family

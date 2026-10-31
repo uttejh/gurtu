@@ -39,7 +39,7 @@ After migrations are applied and `SUPABASE_URL` / `SUPABASE_SECRET_KEY` are conf
 npm run provision:family
 ```
 
-The family has three households, five logins and six people. Household zones are `Asia/Kolkata` for the parents and Household 2, and `America/Chicago` for Household 3. Chinna's login is `chinna@gurtu.com`, receives the only global administrator role, and remains in Household 2. He enrolls a TOTP authenticator the first time he opens Family Activity.
+The family has three households, five logins and six people. Household zones are `Asia/Kolkata` for the parents, `America/Toronto` for Household 2, and `America/Chicago` for Household 3. Chinna's login is `chinna@gurtu.com`, receives the only global administrator role, and remains in Household 2. He enrolls a TOTP authenticator the first time he opens Family Activity.
 
 The first family setup is complete; do not run it again unless you intend to create a second family. For later setup, the script normalizes common time-zone abbreviations to IANA names and prints database errors directly. If a future run fails after creating Auth users, it removes only users created during that run.
 
