@@ -28,6 +28,21 @@ describe('AI action validation', () => {
     expect(result.success).toBe(false);
   });
 
+  it('accepts an event date without a time as an all-day event', () => {
+    const result = ActionProposalSchema.safeParse({
+      action: 'create_event',
+      title: 'Flight',
+      local_date: '2026-12-03',
+      local_time: null,
+      end_time: null,
+      time_zone: 'America/Toronto',
+      all_day: true,
+      people_mentions: [],
+      end_time_assumed: false,
+    });
+    expect(result.success).toBe(true);
+  });
+
   it('accepts a clarification proposal instead of inventing a missing event date', () => {
     const proposal = ActionProposalSchema.parse({
       action: 'clarify',

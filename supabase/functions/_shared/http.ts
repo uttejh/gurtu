@@ -103,11 +103,14 @@ export async function withRequest(
 ): Promise<Response> {
   const options = await handleOptions(request);
   if (options) return options;
+  const startedAt = performance.now();
   try {
     const context = await createRequestContext(request);
     const result = await handler(context, request);
+    console.info(JSON.stringify({ metric: 'edge_request', endpoint: new URL(request.url).pathname.split('/').at(-1), duration_ms: Math.round(performance.now() - startedAt), outcome: 'success' }));
     return corsResponse(request, 200, result);
   } catch (error) {
+    console.info(JSON.stringify({ metric: 'edge_request', endpoint: new URL(request.url).pathname.split('/').at(-1), duration_ms: Math.round(performance.now() - startedAt), outcome: 'error' }));
     const status = error instanceof HttpError ? error.status : 500;
     const message = error instanceof HttpError ? error.message : 'We could not complete that request. Please try again.';
     return corsResponse(request, status, { error: message });

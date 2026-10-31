@@ -14,6 +14,7 @@ export async function openAIJson<T>(input: {
   if (!apiKey) throw new HttpError(503, 'Gurtu AI is not configured yet.');
   const model = input.model ?? Deno.env.get('OPENAI_TEXT_MODEL') ?? 'gpt-6-luna';
   let response: Response;
+  const startedAt = performance.now();
   try {
     response = await fetch(OPENAI_URL, {
       method: 'POST',
@@ -35,8 +36,10 @@ export async function openAIJson<T>(input: {
       }),
     });
   } catch {
+    console.info(JSON.stringify({ metric: 'openai_call', operation: input.name, model, duration_ms: Math.round(performance.now() - startedAt), outcome: 'network_error' }));
     throw new HttpError(503, 'Gurtu AI is temporarily unavailable. Please try again.');
   }
+  console.info(JSON.stringify({ metric: 'openai_call', operation: input.name, model, duration_ms: Math.round(performance.now() - startedAt), outcome: response.ok ? 'success' : 'error' }));
   if (!response.ok) throw new HttpError(response.status === 429 ? 503 : 502, 'Gurtu AI could not complete that request. Please try again.');
   let payload: { output_text?: string; output?: Array<{ content?: Array<{ type?: string; text?: string }> }> };
   try {

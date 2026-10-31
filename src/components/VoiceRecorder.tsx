@@ -61,7 +61,7 @@ export function VoiceRecorder({ onTranscript }: { onTranscript: (transcript: str
         return;
       }
       onTranscript(data.transcript, data.request_id);
-      setMessage({ text: 'Recording ready. Please check the words before saving.', tone: 'success' });
+      setMessage({ text: 'Transcript added to your message. Edit it if needed, then send.', tone: 'success' });
     } catch {
       setMessage({ text: receiptMessage(), tone: 'error' });
     } finally {

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { CalendarBlank, ChatCircle, ClockCounterClockwise, ListBullets, Microphone, NotePencil } from '@phosphor-icons/react';
+import { CalendarBlank, ChatCircle, ClockCounterClockwise, ListBullets, NotePencil } from '@phosphor-icons/react';
 import { Link } from 'react-router-dom';
 import { LogoutButton } from '../../components/LogoutButton';
 import { Brand } from '../../components/Brand';
@@ -121,15 +121,10 @@ export function HomePage({ preview = false }: { preview?: boolean }) {
 
       <section className="home-actions" aria-labelledby="home-heading">
         <h2 id="home-heading">What would you like to do?</h2>
-        <Link className="home-action" to="/remember">
-          <Microphone className="home-action__icon" aria-hidden="true" weight="regular" />
-          <span className="home-action__title">Remember something</span>
-          <span className="home-action__description">Speak or type anything you want your family to remember.</span>
-        </Link>
-        <Link className="home-action" to="/ask">
+        <Link className="home-action" to="/talk">
           <ChatCircle className="home-action__icon" aria-hidden="true" weight="regular" />
-          <span className="home-action__title">Ask your memory</span>
-          <span className="home-action__description">Ask questions about saved information, lists, locations and events.</span>
+          <span className="home-action__title">Talk to Gurtu</span>
+          <span className="home-action__description">Tell me something, ask a question, update a list or add an event.</span>
         </Link>
       </section>
 

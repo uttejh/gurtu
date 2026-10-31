@@ -63,6 +63,7 @@ async function handler(context: RequestContext, request: Request) {
     .filter(Boolean).slice(0, 160).join(', ');
   const upstreamForm = new FormData();
   let audioBytes: Uint8Array | null = null;
+  const transcriptionStartedAt = performance.now();
   try {
     audioBytes = new Uint8Array(await audio.arrayBuffer());
     upstreamForm.append('file', new File([audioBytes], audio.name || 'family-memory-audio', { type: audio.type || 'application/octet-stream' }));
@@ -76,6 +77,7 @@ async function handler(context: RequestContext, request: Request) {
         body: upstreamForm,
         signal: AbortSignal.timeout(55_000),
       });
+      console.info(JSON.stringify({ metric: 'openai_transcription', duration_ms: Math.round(performance.now() - transcriptionStartedAt), outcome: upstream.ok ? 'success' : 'error' }));
       if (!upstream.ok) throw new HttpError(upstream.status === 429 ? 503 : 502, 'That recording could not be transcribed. Please try again or type instead.');
       let result: { text?: string };
       try {

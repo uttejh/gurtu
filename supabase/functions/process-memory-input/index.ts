@@ -12,12 +12,14 @@ const InputSchema = z.discriminatedUnion('mode', [
 type PersonRow = { id: string; display_name: string; aliases: string[]; home_household_id: string; households?: { timezone?: string } | null };
 
 async function loadFamilyPeople(context: RequestContext): Promise<PersonRow[]> {
+  const startedAt = performance.now();
   const { data, error } = await context.supabase.from('people')
     .select('id,display_name,aliases,home_household_id,households(timezone)')
     .eq('family_id', context.profile.family_id)
     .eq('is_active', true)
     .order('display_name')
     .limit(100);
+  console.info(JSON.stringify({ metric: 'database_query', operation: 'load_family_people', duration_ms: Math.round(performance.now() - startedAt), outcome: error ? 'error' : 'success' }));
   if (error) throw new HttpError(503, 'Family names are not available right now.');
   return (data ?? []) as unknown as PersonRow[];
 }
@@ -42,6 +44,26 @@ function detectLanguage(text: string): string {
   if (hasTelugu) return 'te';
   if (hasLatin) return 'en';
   return 'und';
+}
+
+function parseUntimedFlight(text: string, today: string, timeZone: string): ActionProposal | null {
+  const match = text.trim().match(/^(?:i\s+(?:have|have got|booked)|my)\s+(?:a\s+)?flight(?:\s+is)?\s+(?:on\s+)?(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s+(\d{4}))?[.!]?$/iu);
+  if (!match) return null;
+  const months = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+  const month = months.indexOf(match[1].toLocaleLowerCase()) + 1;
+  const day = Number(match[2]);
+  const todayDate = Temporal.PlainDate.from(today);
+  let year = match[3] ? Number(match[3]) : todayDate.year;
+  let date: Temporal.PlainDate;
+  try { date = Temporal.PlainDate.from({ year, month, day }); } catch { return null; }
+  if (!match[3] && Temporal.PlainDate.compare(date, todayDate) < 0) {
+    year += 1;
+    try { date = Temporal.PlainDate.from({ year, month, day }); } catch { return null; }
+  }
+  return {
+    action: 'create_event', title: 'Flight', local_date: date.toString(), local_time: null,
+    end_time: null, time_zone: timeZone, all_day: true, people_mentions: [], end_time_assumed: false,
+  };
 }
 
 function personHint(people: PersonRow[]): string {
@@ -205,18 +227,21 @@ async function executeProposal(context: RequestContext, proposal: ActionProposal
           ? localToUtc(proposal.end_time <= proposal.local_time! ? Temporal.PlainDate.from(proposal.local_date).add({ days: 1 }).toString() : proposal.local_date, proposal.end_time, proposal.time_zone)
           : Temporal.Instant.from(startsAt).add({ minutes: 60 }).toString();
       if (Temporal.Instant.compare(Temporal.Instant.from(endsAt), Temporal.Instant.from(startsAt)) <= 0) throw new HttpError(400, 'The event end must be after its start.');
-      const { data, error } = await supabase.rpc('create_gurtu_event', {
+      const { data, error } = await supabase.rpc('save_gurtu_memory_and_event', {
+        p_original_text: text,
+        p_language: detectLanguage(text),
+        p_summary: `Calendar event: ${proposal.title}`,
+        p_person_ids: personIds,
+        p_memory_request_id: await stableItemRequestId(requestId, 0),
         p_title: proposal.title,
-        p_description: null,
         p_starts_at: startsAt,
         p_ends_at: endsAt,
         p_timezone: proposal.time_zone,
         p_is_all_day: proposal.all_day,
-        p_person_ids: personIds,
-        p_request_id: requestId,
+        p_event_request_id: requestId,
       });
       const id = requireRpcRecordId(data, error);
-      return { ok: true, message: `${proposal.title} was added to your calendar.`, result_entity_type: 'event', result_entity_id: id };
+      return { ok: true, message: `Saved to your family memories and added ${proposal.title} to the calendar.`, result_entity_type: 'event', result_entity_id: id };
     }
     case 'update_event': {
       if (!allowedTimeZone(proposal.time_zone, people, context.profile.timezone)) throw new HttpError(400, 'Choose the time zone for this family event.');
@@ -252,25 +277,30 @@ async function handler(context: RequestContext, request: Request) {
   const input = parsed.data;
 
   if (input.mode === 'interpret') {
+    const captureStartedAt = performance.now();
     const { error: captureError } = await context.supabase.rpc('create_gurtu_capture_request', {
       p_request_id: input.request_id,
       p_input_type: input.input_type,
       p_original_transcript: input.original_text,
     });
+    console.info(JSON.stringify({ metric: 'database_write', operation: 'create_capture', duration_ms: Math.round(performance.now() - captureStartedAt), outcome: captureError ? 'error' : 'success' }));
     if (captureError) throw new HttpError(503, 'The request could not be safely recorded. Please try again.');
     try {
-      await consumeLimit(context, 'ai_interpret');
-      const people = await loadFamilyPeople(context);
-      const currentTime = new Intl.DateTimeFormat('en', { dateStyle: 'full', timeStyle: 'short', timeZone: context.profile.timezone }).format(new Date());
-      const raw = await openAIJson<unknown>({
+      const [, people] = await Promise.all([consumeLimit(context, 'ai_interpret'), loadFamilyPeople(context)]);
+      const current = new Date();
+      const currentTime = new Intl.DateTimeFormat('en', { dateStyle: 'full', timeStyle: 'short', timeZone: context.profile.timezone }).format(current);
+      const currentLocalDate = Temporal.Now.zonedDateTimeISO(context.profile.timezone).toPlainDate().toString();
+      const directFlight = parseUntimedFlight(input.corrected_text, currentLocalDate, context.profile.timezone);
+      const raw = directFlight ?? await openAIJson<unknown>({
         name: 'gurtu_memory_action',
         schema: ActionOutputSchema,
-        instructions: `You help a family preserve information in Telugu, English, or mixed Telugu-English. Read the user's exact words and choose one supported action. Never invent dates, people, list names, event titles, or facts. Preserve Telugu script and the words as spoken. If an event lacks a reliable date or time, return clarify. For a person-specific event, use that person's listed home time zone; otherwise use the current household time zone. If the input is a question rather than a clear request to save or change something, return clarify. Do not create reminders or notifications. Always include all schema fields; use null for unused strings/booleans and [] for unused arrays. People mentions must be names or aliases from the supplied directory. Current local time: ${currentTime}. Current household time zone: ${context.profile.timezone}. Family people (identity only):\n${personHint(people)}`,
+        instructions: `You help a family preserve information in Telugu, English, or mixed Telugu-English. Read the user's exact words and choose one supported action. Never invent people, list names, event titles, or facts. Preserve Telugu script and the words as spoken. For an event date without a year, use the next upcoming occurrence of that month and day relative to the current local date. A missing event time is optional: create it as an all-day event and never ask for a time. A missing end time is optional. For a person-specific event, use that person's listed home time zone; otherwise use the current household time zone. If the date is genuinely missing or ambiguous, return clarify. If the input is a question rather than a clear request to save or change something, return clarify. Do not create reminders or notifications. Always include all schema fields; use null for unused strings/booleans and [] for unused arrays. People mentions must be names or aliases from the supplied directory. Current local date: ${currentLocalDate}. Current local time: ${currentTime}. Current household time zone: ${context.profile.timezone}. Family people (identity only):\n${personHint(people)}`,
         userContent: input.corrected_text,
         maxOutputTokens: 1600,
       });
       const proposal = validateProposal(raw);
       const selectedPersonIds = inferredPeople(proposal, people);
+      const interpretationStartedAt = performance.now();
       const { error: saveInterpretationError } = await context.supabase.rpc('update_gurtu_capture_interpretation', {
         p_request_id: input.request_id,
         p_original_transcript: input.original_text,
@@ -281,6 +311,7 @@ async function handler(context: RequestContext, request: Request) {
         p_selected_person_ids: selectedPersonIds,
         p_processing_status: proposal.action === 'clarify' ? 'needs_clarification' : 'awaiting_confirmation',
       });
+      console.info(JSON.stringify({ metric: 'database_write', operation: 'save_interpretation', duration_ms: Math.round(performance.now() - interpretationStartedAt), outcome: saveInterpretationError ? 'error' : 'success' }));
       if (saveInterpretationError) throw new HttpError(503, 'The interpretation could not be safely recorded. Please try again.');
       return { proposal, request_id: input.request_id };
     } catch (error) {
@@ -315,7 +346,9 @@ async function handler(context: RequestContext, request: Request) {
   });
   if (confirmationError || confirmed !== true) throw new HttpError(409, 'This request is no longer ready to save. Please review it again.');
   try {
+    const operationStartedAt = performance.now();
     const result = await executeProposal(context, proposal, correctedText, input.request_id, input.person_ids);
+    console.info(JSON.stringify({ metric: 'database_write', operation: 'execute_action', duration_ms: Math.round(performance.now() - operationStartedAt), outcome: 'success' }));
     const { error: finishError } = await context.supabase.rpc('finish_gurtu_capture', {
       p_request_id: input.request_id,
       p_result_entity_type: result.result_entity_type,

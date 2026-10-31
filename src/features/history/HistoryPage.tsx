@@ -14,10 +14,6 @@ const ACTION_LABELS: Record<string, string> = {
   memory_saved: 'Memory saved',
   item_location_changed: 'Item location updated',
   list_created: 'List created',
-  list_item_added: 'List item added',
-  list_item_completed: 'List item marked complete',
-  list_item_uncompleted: 'List item marked incomplete',
-  list_item_removed: 'List item removed',
   event_created: 'Calendar event added',
   event_updated: 'Calendar event updated',
 };
@@ -40,6 +36,7 @@ export function HistoryPage() {
     void supabase
       .from('activity_log')
       .select('id,action,record_type,created_at')
+      .neq('record_type', 'list_item')
       .order('created_at', { ascending: false })
       .limit(100)
       .then(({ data, error }) => {

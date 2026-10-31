@@ -11,8 +11,7 @@ const ListsPage = lazy(() => import('../features/lists/ListsPage').then((module)
 const LoginPage = lazy(() => import('../features/auth/LoginPage').then((module) => ({ default: module.LoginPage })));
 const PasswordRecoveryPage = lazy(() => import('../features/auth/PasswordRecoveryPage').then((module) => ({ default: module.PasswordRecoveryPage })));
 const MemoriesPage = lazy(() => import('../features/memories/MemoriesPage').then((module) => ({ default: module.MemoriesPage })));
-const AskPage = lazy(() => import('../features/ask/AskPage').then((module) => ({ default: module.AskPage })));
-const RememberPage = lazy(() => import('../features/remember/RememberPage').then((module) => ({ default: module.RememberPage })));
+const TalkPage = lazy(() => import('../features/talk/TalkPage').then((module) => ({ default: module.TalkPage })));
 const FamilyActivityPage = lazy(() => import('../features/admin/FamilyActivityPage').then((module) => ({ default: module.FamilyActivityPage })));
 
 export function App() {
@@ -29,8 +28,9 @@ export function App() {
         <Route path="/reset-password" element={<PasswordRecoveryPage />} />
         <Route element={<RouteGate />}>
           <Route index element={<HomePage />} />
-          <Route path="/remember" element={<RememberPage />} />
-          <Route path="/ask" element={<AskPage />} />
+          <Route path="/talk" element={<TalkPage />} />
+          <Route path="/remember" element={<Navigate to="/talk" replace />} />
+          <Route path="/ask" element={<Navigate to="/talk" replace />} />
           <Route path="/memories" element={<MemoriesPage />} />
           <Route path="/history" element={<HistoryPage />} />
           <Route path="/lists" element={<ListsPage />} />

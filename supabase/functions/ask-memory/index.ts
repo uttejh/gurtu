@@ -55,6 +55,7 @@ function fallbackNotFound(question: string): string {
 async function retrieve(context: RequestContext, question: string): Promise<Evidence[]> {
   const terms = searchTerms(question);
   if (!terms.length) return [];
+  const queryStartedAt = performance.now();
   const memoryFilter = `${orTerms('original_text', terms)},${orTerms('summary', terms)}`;
   const [memories, locations, items, lists, listItems, events] = await Promise.all([
     context.supabase.from('memories').select('id,original_text,summary,created_at,memory_people(people(display_name))').or(memoryFilter).limit(MAX_CANDIDATES),
@@ -65,6 +66,7 @@ async function retrieve(context: RequestContext, question: string): Promise<Evid
     context.supabase.from('events').select('id,title,description,starts_at,ends_at,timezone,is_all_day,created_at,event_people(people(display_name))').or(orTerms('title', terms)).limit(60),
   ]);
   if ([memories, locations, items, lists, listItems, events].some((result) => result.error)) {
+    console.info(JSON.stringify({ metric: 'database_retrieval', duration_ms: Math.round(performance.now() - queryStartedAt), outcome: 'error' }));
     throw new HttpError(503, 'We could not search the saved family records right now.');
   }
 
@@ -112,7 +114,9 @@ async function retrieve(context: RequestContext, question: string): Promise<Evid
     const localTime = row.is_all_day ? 'all day' : new Intl.DateTimeFormat('en', { timeStyle: 'short', timeZone: row.timezone }).format(new Date(row.starts_at));
     evidence.push({ id: row.id, kind: 'calendar event', created_at: row.created_at, content: `${row.title}\n${localDate} ${localTime} (${row.timezone})${row.description ? `\n${row.description}` : ''}` });
   }
-  return rankEvidence(evidence, terms, question);
+  const ranked = rankEvidence(evidence, terms, question);
+  console.info(JSON.stringify({ metric: 'database_retrieval', duration_ms: Math.round(performance.now() - queryStartedAt), outcome: 'success', evidence_count: ranked.length }));
+  return ranked;
 }
 
 async function handler(context: RequestContext, request: Request) {
