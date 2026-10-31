@@ -5,13 +5,25 @@ export interface AskEvidence {
   content: string;
 }
 
+const TELUGU_SEARCH_ALIASES: Array<{ pattern: RegExp; terms: string[] }> = [
+  { pattern: /(?:ఫ్లైట్|విమానం|విమానము|విమాన ప్రయాణం)/u, terms: ['flight', 'plane'] },
+  { pattern: /(?:ట్రిప్|ప్రయాణం|పర్యటన)/u, terms: ['trip', 'travel'] },
+  { pattern: /(?:పుట్టినరోజు|జన్మదినం|బర్త్‌డే|బర్త్డే)/u, terms: ['birthday', 'bday'] },
+  { pattern: /(?:బ్యాంక్|బ్యాంకు|అపాయింట్‌మెంట్|అపాయింట్మెంట్)/u, terms: ['bank', 'appointment'] },
+];
+
+function bilingualAliases(value: string): string[] {
+  return TELUGU_SEARCH_ALIASES.flatMap(({ pattern, terms }) => pattern.test(value) ? terms : []);
+}
+
 export function buildSearchTerms(question: string, expansions: string[] = []): string[] {
   const tokensFor = (value: string) =>
     value.normalize('NFKC').toLocaleLowerCase().match(/[\p{L}\p{M}\p{N}]+/gu) ?? []
+  const aliases = [...bilingualAliases(question), ...expansions.flatMap(bilingualAliases)];
   const tokens = expansions.length
-    ? [...expansions.flatMap(tokensFor), ...tokensFor(question)]
-    : tokensFor(question);
-  return [...new Set(tokens.filter((term) => [...term].length >= 2))].slice(0, 16);
+    ? [...aliases, ...expansions.flatMap(tokensFor), ...tokensFor(question)]
+    : [...aliases, ...tokensFor(question)];
+  return [...new Set(tokens.map((term) => term.normalize('NFKC').toLocaleLowerCase()).filter((term) => [...term].length >= 2))].slice(0, 16);
 }
 
 function score(text: string, terms: string[], question: string): number {

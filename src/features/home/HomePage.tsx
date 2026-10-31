@@ -87,12 +87,16 @@ export function HomePage({ preview = false }: { preview?: boolean }) {
 
   useEffect(() => {
     void loadEvents();
+    let refreshTimer: number | undefined;
     const refreshOnReturn = () => {
-      if (document.visibilityState === 'visible') void loadEvents();
+      if (document.visibilityState !== 'visible') return;
+      if (refreshTimer !== undefined) window.clearTimeout(refreshTimer);
+      refreshTimer = window.setTimeout(() => { void loadEvents(); }, 180);
     };
     window.addEventListener('focus', refreshOnReturn);
     document.addEventListener('visibilitychange', refreshOnReturn);
     return () => {
+      if (refreshTimer !== undefined) window.clearTimeout(refreshTimer);
       window.removeEventListener('focus', refreshOnReturn);
       document.removeEventListener('visibilitychange', refreshOnReturn);
     };
