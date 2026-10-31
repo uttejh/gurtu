@@ -15,8 +15,6 @@ interface Capture {
   submitted_by_user_id: string;
   request_id: string;
   input_type: 'voice' | 'text';
-  original_transcript: string | null;
-  corrected_transcript: string | null;
   detected_language: string;
   detected_intent: Intent | null;
   extracted_payload: Record<string, unknown> | null;
@@ -366,7 +364,7 @@ export function FamilyActivityPage() {
     if (!supabase) return;
     setLoading(true);
     setLoadError('');
-    let query = supabase.from('capture_requests').select('id,family_id,household_id,submitted_by_user_id,request_id,input_type,original_transcript,corrected_transcript,detected_language,detected_intent,extracted_payload,selected_person_ids,processing_status,result_entity_type,result_entity_id,error_code,safe_error_description,created_at,confirmed_at,completed_at').order('created_at', { ascending: false }).limit(1000);
+    let query = supabase.rpc('get_admin_family_activity').order('created_at', { ascending: false }).limit(1000);
     if (currentFilters.household) query = query.eq('household_id', currentFilters.household);
     if (currentFilters.account) query = query.eq('submitted_by_user_id', currentFilters.account);
     if (currentFilters.person) query = query.contains('selected_person_ids', [currentFilters.person]);
@@ -381,7 +379,7 @@ export function FamilyActivityPage() {
     } else {
       const search = currentFilters.search.trim().toLocaleLowerCase();
       const rows = (data ?? []) as unknown as Capture[];
-      setCaptures(search ? rows.filter((capture) => [capture.original_transcript, capture.corrected_transcript, capture.detected_intent, capture.processing_status, JSON.stringify(capture.extracted_payload ?? {})].some((value) => value?.toLocaleLowerCase().includes(search))) : rows);
+      setCaptures(search ? rows.filter((capture) => [capture.detected_intent, capture.processing_status, JSON.stringify(capture.extracted_payload ?? {})].some((value) => value?.toLocaleLowerCase().includes(search))) : rows);
     }
     setLoading(false);
   }, []);
@@ -403,7 +401,6 @@ export function FamilyActivityPage() {
     void (async () => {
       await Promise.all([
         supabase.rpc('log_gurtu_admin_action', { p_action: 'capture_viewed', p_capture_request_id: selectedCapture.id }),
-        supabase.rpc('log_gurtu_admin_action', { p_action: 'transcript_viewed', p_capture_request_id: selectedCapture.id }),
       ]);
       const [details, auditResult] = await Promise.all([
         getRecordDetails(selectedCapture, householdName),
@@ -498,9 +495,9 @@ export function FamilyActivityPage() {
   return (
     <PageLayout title="Family Activity" backTo="/">
       <section className="page-section family-activity" aria-labelledby="activity-heading">
-        <div className="section-heading-row"><div><h3 id="activity-heading">Review Remember something activity</h3><p className="section-lead">Transcripts, interpretations, saved records and recovery history across the family.</p></div><Link className="quiet-link" to="/">Home</Link></div>
+        <div className="section-heading-row"><div><h3 id="activity-heading">Review Remember something activity</h3><p className="section-lead">Review action status, saved records and recovery history. Personal transcript text stays visible only to its sender.</p></div><Link className="quiet-link" to="/">Home</Link></div>
         <form className="admin-filters" onSubmit={(event) => void applyFilters(event)}>
-          <label className="admin-filter admin-filter--search" htmlFor="activity-search">Search transcripts and interpretations<input id="activity-search" className="text-field" type="search" value={filters.search} onChange={(event) => setFilters({ ...filters, search: event.target.value })} placeholder="Search family activity" /></label>
+          <label className="admin-filter admin-filter--search" htmlFor="activity-search">Search action details<input id="activity-search" className="text-field" type="search" value={filters.search} onChange={(event) => setFilters({ ...filters, search: event.target.value })} placeholder="Search family activity" /></label>
           <label className="admin-filter" htmlFor="activity-household">Household<select id="activity-household" className="text-field" value={filters.household} onChange={(event) => setFilters({ ...filters, household: event.target.value })}><option value="">All households</option>{households.map((household) => <option key={household.id} value={household.id}>{household.name}</option>)}</select></label>
           <label className="admin-filter" htmlFor="activity-account">Account<select id="activity-account" className="text-field" value={filters.account} onChange={(event) => setFilters({ ...filters, account: event.target.value })}><option value="">All accounts</option>{profiles.map((profile) => <option key={profile.user_id} value={profile.user_id}>{profile.display_name}</option>)}</select></label>
           <label className="admin-filter" htmlFor="activity-person">Tagged person<select id="activity-person" className="text-field" value={filters.person} onChange={(event) => setFilters({ ...filters, person: event.target.value })}><option value="">All people</option>{people.map((person) => <option key={person.id} value={person.id}>{person.display_name}</option>)}</select></label>
@@ -519,7 +516,7 @@ export function FamilyActivityPage() {
             {captures.map((capture) => <li key={capture.id}>
               <button className={`admin-capture-row${selectedId === capture.id ? ' is-selected' : ''}`} type="button" aria-pressed={selectedId === capture.id} onClick={() => setSelectedId(capture.id)}>
                 <span className="admin-capture-row__top"><strong>{capture.detected_intent ? INTENT_LABEL[capture.detected_intent] : capture.input_type === 'voice' ? 'Voice capture' : 'Text capture'}</strong><span className={`admin-status admin-status--${capture.processing_status}`}>{STATUS_LABEL[capture.processing_status]}</span></span>
-                <span className="admin-capture-row__preview">{capture.corrected_transcript || capture.original_transcript || capture.safe_error_description || 'No transcript was received.'}</span>
+                <span className="admin-capture-row__preview">{capture.safe_error_description || (capture.detected_intent ? 'Saved action details are available.' : 'Private request text is visible only to its sender.')}</span>
                 <span className="admin-capture-row__meta">{profileName.get(capture.submitted_by_user_id) ?? 'Family account'} · {householdName.get(capture.household_id) ?? 'Household'} · {formatDate(capture.created_at)}</span>
               </button>
             </li>)}
@@ -527,10 +524,9 @@ export function FamilyActivityPage() {
           <section className="admin-capture-detail" aria-label="Selected activity details">
             {!selectedCapture ? <p className="empty-state">Select an activity to review its details.</p> : <>
               <div className="admin-detail-heading"><div><span className={`admin-status admin-status--${selectedCapture.processing_status}`}>{STATUS_LABEL[selectedCapture.processing_status]}</span><h3>{selectedCapture.detected_intent ? INTENT_LABEL[selectedCapture.detected_intent] : 'Remember something request'}</h3></div><time>{formatDate(selectedCapture.created_at)}</time></div>
-              <dl className="admin-capture-meta"><div><dt>Account</dt><dd>{profileName.get(selectedCapture.submitted_by_user_id) ?? 'Family account'}</dd></div><div><dt>Household</dt><dd>{householdName.get(selectedCapture.household_id) ?? 'Household'}</dd></div><div><dt>Input</dt><dd>{selectedCapture.input_type === 'voice' ? 'Voice transcript' : 'Typed text'}</dd></div><div><dt>Language</dt><dd>{selectedCapture.detected_language}</dd></div></dl>
-              <section className="admin-detail-block"><h4>Original words received</h4><p className="admin-transcript">{selectedCapture.original_transcript || 'No transcript was received. No audio is stored.'}</p></section>
-              {selectedCapture.corrected_transcript && selectedCapture.corrected_transcript !== selectedCapture.original_transcript ? <section className="admin-detail-block"><h4>Corrected words</h4><p className="admin-transcript">{selectedCapture.corrected_transcript}</p></section> : null}
-              <section className="admin-detail-block"><h4>AI interpretation</h4>{selectedCapture.extracted_payload ? <pre className="admin-json">{JSON.stringify(selectedCapture.extracted_payload, null, 2)}</pre> : <p className="muted-copy">No structured interpretation was saved.</p>}<p className="admin-tags"><strong>People tagged:</strong> {selectedNames(selectedCapture.selected_person_ids ?? [], people).join(', ') || 'None'}</p></section>
+              <dl className="admin-capture-meta"><div><dt>Account</dt><dd>{profileName.get(selectedCapture.submitted_by_user_id) ?? 'Family account'}</dd></div><div><dt>Household</dt><dd>{householdName.get(selectedCapture.household_id) ?? 'Household'}</dd></div><div><dt>Input type</dt><dd>{selectedCapture.input_type === 'voice' ? 'Voice' : 'Typed text'}</dd></div><div><dt>Language</dt><dd>{selectedCapture.detected_language}</dd></div></dl>
+              <section className="admin-detail-block"><h4>Message privacy</h4><p className="muted-copy">Original and corrected words are private to the person who sent them.</p></section>
+              <section className="admin-detail-block"><h4>Structured action</h4>{selectedCapture.extracted_payload && Object.keys(selectedCapture.extracted_payload).length ? <pre className="admin-json">{JSON.stringify(selectedCapture.extracted_payload, null, 2)}</pre> : <p className="muted-copy">No shared action details were saved.</p>}<p className="admin-tags"><strong>People tagged:</strong> {selectedNames(selectedCapture.selected_person_ids ?? [], people).join(', ') || 'None'}</p></section>
               {selectedCapture.safe_error_description ? <section className="admin-detail-block"><h4>Save result</h4><p>{selectedCapture.safe_error_description}</p>{selectedCapture.error_code ? <p className="admin-error-code">{selectedCapture.error_code}</p> : null}</section> : null}
               {detailLoading ? <p className="muted-copy">Loading saved record…</p> : null}
               {detailError ? <StatusMessage tone="error">{detailError}</StatusMessage> : null}

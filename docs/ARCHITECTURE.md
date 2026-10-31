@@ -29,11 +29,11 @@ The model never receives a database credential and never writes SQL. It cannot s
 
 ## Family Activity
 
-Chinna's Family Activity page requires a verified TOTP factor and an `aal2` session. RLS grants cross-household reads only to that account at `aal2`. The page reviews capture text, structured interpretations, result records, and safe failures. Retry and correction RPCs check the trusted role and assurance level again in the database. Transcript views, searches, retries, and corrections are recorded in `admin_audit_log`. Corrections preserve the source text; location fixes append a history row.
+Chinna's Family Activity page requires a verified TOTP factor and an `aal2` session. The page reviews capture status, structured action details, shared result records, and safe failures. It does not expose the sender's original or corrected transcript; those remain available only through the owner-checked `get_own_capture_requests` RPC. Retry and correction RPCs check the trusted role and assurance level again in the database. Administrator activity is recorded in `admin_audit_log`. Corrections preserve the source text; location fixes append a history row.
 
 ## Ask and retrieval
 
-`ask-memory` does not save the question. PostgREST searches memories, latest item locations, accessible lists, and accessible events through the authenticated user's client. RLS filters every query. Candidate rows are ranked locally and at most twelve records are passed to the model. The model receives those rows as untrusted evidence and returns a structured answer with source IDs. The Edge Function discards any answer whose citations are absent or outside the retrieved records.
+`ask-memory` searches memories, latest item locations, accessible lists, and accessible events through the authenticated user's client. RLS filters every query. Each account's conversation is saved in `talk_messages` and is readable only by that account. Follow-up questions may include up to four recent turns so the model can resolve references, but only retrieved family records count as evidence. Candidate rows are ranked locally and at most twelve records are passed to the model. The model returns a structured answer with source IDs. The Edge Function discards any answer whose citations are absent or outside the retrieved records.
 
 This first release uses Unicode token and substring matching, not embeddings. It keeps retrieval bounded and avoids sending the household's entire memory table to OpenAI. A later semantic search would need measured retrieval tests before adding embeddings or `pgvector`.
 

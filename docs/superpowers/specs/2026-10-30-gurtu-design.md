@@ -21,7 +21,7 @@ The responsive React website follows the two supplied screenshots: black canvas,
 
 Households own memories and items. Person tags do not alter ownership. Lists are private unless an explicit list-household access row grants one recipient household access. Events use their own explicit access rows; the creator household can edit, a recipient household can view, and neither access row grants access to other records. Event timestamps are UTC and retain the target household’s IANA zone. Home visibility is computed as `now >= starts_at - 24 hours AND now < ends_at`, with no scheduled work.
 
-Voice recordings stay in temporary browser and request memory only. Audio is not stored in a database, object store, browser persistence, logs, or Git. Corrected transcript text is saved only after user confirmation. Idempotency keys prevent retried writes from creating duplicates. Questions are not stored as memories or conversation history.
+Voice recordings stay in temporary browser and request memory only. Audio is not stored in a database, object store, browser persistence, logs, or Git. Capture transcripts are private to the sender; authenticated clients cannot read the base capture table. Family Activity exposes statuses, sanitized action details, and shared records, but not original or corrected transcripts. Idempotency keys prevent retried writes from creating duplicates. Q&A messages are stored in `talk_messages` and readable only by their sender.
 
 ## Open setup inputs
 

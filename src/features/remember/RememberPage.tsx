@@ -138,11 +138,10 @@ export function RememberPage() {
       setRequestId(null);
       setSelectedPeople([]);
     } catch (cause) {
-      const { data: capture } = await supabase.from('capture_requests')
-        .select('processing_status')
+      const { data: capture } = await supabase.rpc('get_own_capture_requests')
         .eq('request_id', requestId)
         .maybeSingle();
-      if (capture?.processing_status === 'succeeded') {
+      if ((capture as { processing_status?: string } | null)?.processing_status === 'succeeded') {
         setSuccess('Saved to your family memory.');
         setText('');
         setOriginalText('');

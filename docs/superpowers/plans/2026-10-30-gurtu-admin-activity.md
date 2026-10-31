@@ -8,8 +8,8 @@ Add a server-enforced global administrator for Chinna, preserve ordinary househo
 
 1. Add a trusted global-role table, an AAL2-aware admin predicate, capture request records, and an immutable admin audit log. Add read-only administrator policies to each family-owned table without changing ordinary write policies.
 2. Extend trusted family provisioning so `chinna@gurtu.com` is created in Household 2 and is the only account assigned the global role. Update the prompts and defaults for Chinna, Ash, Nani, and Sush.
-3. Record text-only Remember something lifecycle events, including transcription receipt, interpretation, confirmation, success, failure, safe error details, and original/corrected transcript text. Preserve request idempotency.
-4. Add secure administrator retry and correction RPCs. Restrict retries to failed eligible operations; use the submitter's identity and request id inside a transaction. Audit retries, transcript views, and corrections.
+3. Record text-only Remember something lifecycle events, including transcription receipt, interpretation, confirmation, success, failure, safe error details, and original/corrected transcript text. Preserve request idempotency. Restrict raw transcripts to the sender.
+4. Add secure administrator retry and correction RPCs. Restrict retries to failed eligible operations; use the submitter's identity and request id inside a transaction. Audit retries and corrections. Expose sanitized activity details to administrators without raw transcripts.
 5. Add an admin-only Family Activity page with search and filters, detail review, MFA enrollment/challenge, retry, and audited tag/location corrections. The family nav only renders the link when the database says the signed-in user has the role.
 6. Add regression coverage for the three-household/ five-identity security matrix, role assignment, capture lifecycle, no direct role mutation, idempotent retry, correction audit, and audio non-persistence. Run app checks and SQL checks where a local database is available.
 

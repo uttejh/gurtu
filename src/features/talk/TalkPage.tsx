@@ -301,6 +301,7 @@ export function TalkPage() {
     <PageLayout title="Talk to Gurtu" backTo="/">
       <section className="talk-section" aria-label="Conversation with Gurtu">
         <p className="section-lead">Tell me something, ask a question, update a list or add an event.</p>
+        <p className="talk-privacy-note">Your conversation is private to you. Anything you save becomes part of your family records.</p>
         <div className="talk-messages" aria-live="polite">
           {historyLoading ? <p className="muted-copy">Loading your conversation…</p> : null}
           {!historyLoading && messages.length === 0 ? <p className="talk-empty">Start by speaking or typing to Gurtu.</p> : null}

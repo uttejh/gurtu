@@ -304,8 +304,7 @@ async function handler(context: RequestContext, request: Request) {
   }
 
   if (!input.confirmed) throw new HttpError(400, 'Confirm the action before saving it.');
-  const { data: capture, error: captureError } = await context.supabase.from('capture_requests')
-    .select('input_type,original_transcript,corrected_transcript,detected_intent,extracted_payload,processing_status,result_entity_type,result_entity_id')
+  const { data: capture, error: captureError } = await context.supabase.rpc('get_own_capture_requests')
     .eq('request_id', input.request_id).eq('submitted_by_user_id', context.user.id).maybeSingle();
   if (captureError || !capture) {
     throw new HttpError(409, 'This request is no longer ready to save. Please review it again.');
