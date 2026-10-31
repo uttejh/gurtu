@@ -25,6 +25,7 @@ html { min-width: 320px; background: var(--background); }
 body {
   min-width: 320px;
   min-height: 100vh;
+  min-height: 100dvh;
   margin: 0;
   background: var(--background);
   color: var(--primary);
@@ -471,6 +472,11 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .calendar-cell i { width: 7px; height: 7px; border-radius: 50%; background: #aaa; }
 .calendar-cell.is-selected i { background: #050505; }
 .calendar-cell i.calendar-dot-placeholder { visibility: hidden; }
+.calendar-next-event { display: grid; width: 100%; gap: 5px; margin: -12px 0 18px; padding: 16px 18px; border: 1px solid #414141; border-radius: 17px; background: #242424; color: var(--primary); text-align: left; cursor: pointer; }
+.calendar-next-event > span:first-child { color: #85b4ff; font-size: 14px; }
+.calendar-next-event strong { font-size: 19px; font-weight: 650; }
+.calendar-next-event > span:last-child { color: var(--secondary); font-size: 15px; }
+.calendar-next-event:hover { border-color: #696969; background: #2c2c2c; }
 .calendar-agenda { margin-top: 14px; padding-top: 25px; border-top: 1px solid #292929; }
 .calendar-agenda-heading { margin-bottom: 18px; }
 .calendar-event-count { padding: 7px 13px; border-radius: 999px; background: #191919; color: #e4e4e4; font-size: 17px; white-space: nowrap; }
@@ -506,13 +512,18 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .talk-sources blockquote p { margin: 0 0 6px; font-size: 16px; line-height: 1.45; white-space: pre-wrap; }
 .talk-sources time { color: var(--muted); font-size: 13px; }
 .talk-composer { position: sticky; bottom: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; padding: 14px 0 2px; border-top: 1px solid #242424; background: #000; }
-.talk-composer .voice-capture { grid-column: 1 / -1; display: flex; align-items: center; margin: 0; }
+.talk-composer .voice-capture { grid-column: 1 / -1; display: grid; grid-template-columns: 62px minmax(0, 1fr); align-items: center; gap: 8px 14px; margin: 0; }
 .talk-composer .record-button { width: 62px; height: 62px; flex: 0 0 62px; }
+.talk-composer .voice-capture__copy { min-width: 0; }
 .talk-composer .voice-capture__copy strong { font-size: 18px; }
 .talk-composer .voice-capture__copy span { font-size: 16px; }
-.talk-composer .voice-capture .status-message { margin: 4px 0; }
-.talk-input { min-height: 64px; max-height: 190px; resize: vertical; }
+.talk-composer .voice-capture .status-message { grid-column: 1 / -1; margin: 0; }
+.talk-input { min-width: 0; min-height: 70px; max-height: 190px; resize: vertical; }
 .talk-send { min-width: 110px; min-height: 64px; }
+.talk-send svg { flex: 0 0 auto; }
+.talk-error { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin-bottom: 10px; }
+.talk-error .status-message { flex: 1 1 100%; margin: 0; }
+.talk-retry { min-height: 48px; }
 
 @media (max-width: 760px) {
   .home-action { min-height: 186px; }
@@ -537,10 +548,16 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .talk-message { max-width: 94%; padding: 14px 16px; border-radius: 17px; }
   .talk-message > p { font-size: 18px; }
   .talk-composer { gap: 8px; }
+  .talk-composer .voice-capture { grid-template-columns: 56px minmax(0, 1fr); gap: 8px 12px; }
   .talk-composer .record-button { width: 56px; height: 56px; flex-basis: 56px; }
-  .talk-input, .talk-send { min-height: 58px; }
-  .talk-send { min-width: 56px; padding: 10px; }
-  .talk-send span { display: none; }
+  .talk-composer .voice-capture__copy strong { font-size: 17px; }
+  .talk-composer .voice-capture__copy span { font-size: 14px; line-height: 1.35; }
+  .talk-input { min-height: 84px; padding: 14px; font-size: 18px; line-height: 1.45; }
+  .talk-send { min-width: 92px; min-height: 84px; flex-direction: column; gap: 4px; padding: 10px; font-size: 16px; }
+  .talk-send svg { width: 20px; height: 20px; }
+  .talk-error { align-items: stretch; }
+  .talk-retry { width: 100%; min-height: 52px; }
+  .calendar-next-event { margin-top: -5px; padding: 14px; }
 }
 
 .admin-entry-link { display: inline-flex; min-height: 48px; align-items: center; margin-top: 18px; color: var(--secondary); font-size: 15px; }
@@ -623,7 +640,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 
 @media (max-width: 760px) {
   body { font-size: 16px; }
-  .app-frame { width: calc(100% - 24px); min-height: calc(100vh - 24px); margin: 12px auto; padding: 22px 16px 18px; border-radius: 28px; }
+  .app-frame { width: calc(100% - 24px); min-height: calc(100vh - 24px); min-height: calc(100dvh - 24px); margin: 12px auto; padding: 22px 16px calc(18px + env(safe-area-inset-bottom)); border-radius: 28px; }
   .brand__name { font-size: 35px; }
   .brand__tagline { margin-top: 12px; font-size: 18px; }
   .home-topline { align-items: flex-start; }
@@ -661,6 +678,15 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .back-link { min-height: 48px; font-size: 17px; }
   .page-title { margin-top: 28px; font-size: 29px; }
   .page-section { margin-top: 18px; }
+  .calendar-month-heading { gap: 7px; }
+  .calendar-month-heading h3, .calendar-agenda-heading h3 { font-size: 23px; }
+  .calendar-month-controls { flex-shrink: 0; }
+  .calendar-nav-button { min-width: 40px; min-height: 48px; }
+  .calendar-today-button { min-width: 48px; min-height: 48px; }
+  .calendar-grid { grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; }
+  .calendar-cell { min-width: 0; min-height: 50px; padding: 4px 0; font-size: 16px; }
+  .calendar-agenda-heading { align-items: flex-start; gap: 8px; }
+  .calendar-event-count { margin-top: 1px; }
   .section-lead { margin-bottom: 18px; font-size: 17px; }
   .voice-capture { grid-template-columns: 64px 1fr; gap: 12px; margin: 16px 0 24px; }
   .record-button { width: 60px; height: 60px; }
@@ -692,6 +718,17 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .admin-capture-detail { padding: 16px; }
   .family-activity .section-heading-row h3 { font-size: 23px; }
   .admin-person-options { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 360px) {
+  .app-frame { width: calc(100% - 16px); padding-right: 12px; padding-left: 12px; }
+  .calendar-month-heading h3 { font-size: 20px; }
+  .calendar-month-heading p { font-size: 14px; }
+  .calendar-month-controls { gap: 0; }
+  .calendar-nav-button { min-width: 36px; }
+  .calendar-today-button { min-width: 44px; font-size: 13px; }
+  .talk-composer { grid-template-columns: minmax(0, 1fr) 84px; gap: 7px; }
+  .talk-send { min-width: 84px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

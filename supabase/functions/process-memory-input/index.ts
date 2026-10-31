@@ -1,6 +1,7 @@
 import { Temporal } from 'npm:@js-temporal/polyfill@0.5.1';
 import { z } from 'npm:zod@4.6.7';
 import { ActionOutputSchema, validateProposal, type ActionProposal } from '../_shared/actions.ts';
+import { parseUntimedFlight } from '../_shared/flight.ts';
 import { consumeLimit, HttpError, readJson, withRequest, type RequestContext } from '../_shared/http.ts';
 import { openAIJson } from '../_shared/openai.ts';
 
@@ -44,26 +45,6 @@ function detectLanguage(text: string): string {
   if (hasTelugu) return 'te';
   if (hasLatin) return 'en';
   return 'und';
-}
-
-function parseUntimedFlight(text: string, today: string, timeZone: string): ActionProposal | null {
-  const match = text.trim().match(/^(?:i\s+(?:have|have got|booked)|my)\s+(?:a\s+)?flight(?:\s+is)?\s+(?:on\s+)?(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s+(\d{4}))?[.!]?$/iu);
-  if (!match) return null;
-  const months = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
-  const month = months.indexOf(match[1].toLocaleLowerCase()) + 1;
-  const day = Number(match[2]);
-  const todayDate = Temporal.PlainDate.from(today);
-  let year = match[3] ? Number(match[3]) : todayDate.year;
-  let date: Temporal.PlainDate;
-  try { date = Temporal.PlainDate.from({ year, month, day }); } catch { return null; }
-  if (!match[3] && Temporal.PlainDate.compare(date, todayDate) < 0) {
-    year += 1;
-    try { date = Temporal.PlainDate.from({ year, month, day }); } catch { return null; }
-  }
-  return {
-    action: 'create_event', title: 'Flight', local_date: date.toString(), local_time: null,
-    end_time: null, time_zone: timeZone, all_day: true, people_mentions: [], end_time_assumed: false,
-  };
 }
 
 function personHint(people: PersonRow[]): string {

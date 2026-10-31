@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Microphone, Stop } from '@phosphor-icons/react';
 import { StatusMessage } from './StatusMessage';
 import { supabase } from '../lib/supabase';
+import { friendlyFunctionError } from '../lib/errors';
 
 const MAX_RECORDING_MS = 2 * 60 * 1000;
 
@@ -57,7 +58,7 @@ export function VoiceRecorder({ onTranscript }: { onTranscript: (transcript: str
     try {
       const { data, error } = await supabase.functions.invoke('transcribe-audio', { body: form });
       if (error || typeof data?.transcript !== 'string' || !data.transcript.trim()) {
-        setMessage({ text: "Gurtu couldn't transcribe the recording. No family memory was saved. Please try again or type instead.", tone: 'error' });
+        setMessage({ text: await friendlyFunctionError(error, "Gurtu couldn't transcribe the recording. No family memory was saved. Please try again or type instead."), tone: 'error' });
         return;
       }
       onTranscript(data.transcript, data.request_id);

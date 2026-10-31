@@ -9,7 +9,7 @@ import { useAuth } from '../../app/useAuth';
 import { useFamilyPeople } from '../shared/useFamilyPeople';
 import { ActionProposalSchema } from '../../lib/actions';
 import { findPeopleMentioned, type PersonIdentity } from '../../lib/people';
-import { friendlyError } from '../../lib/errors';
+import { friendlyFunctionError } from '../../lib/errors';
 import { supabase } from '../../lib/supabase';
 
 interface TalkMessage {
@@ -24,6 +24,20 @@ interface TalkMessage {
 interface PendingConfirmation {
   requestId: string;
   personIds: string[];
+  input: string;
+  originalInput: string;
+  inputType: 'text' | 'voice';
+}
+
+interface RetryRequest {
+  requestId: string;
+  input: string;
+  originalInput: string;
+  inputType: 'text' | 'voice';
+  personIds: string[];
+  mode: 'ask' | 'action';
+  phase: 'ask' | 'interpret' | 'execute';
+  successContent?: string;
 }
 
 function isQuestion(value: string): boolean {
@@ -52,6 +66,7 @@ export function TalkPage() {
   const [error, setError] = useState<string | null>(null);
   const [historyLoading, setHistoryLoading] = useState(Boolean(supabase));
   const [pending, setPending] = useState<PendingConfirmation | null>(null);
+  const [retryRequest, setRetryRequest] = useState<RetryRequest | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -92,11 +107,31 @@ export function TalkPage() {
     return people.map((person) => ({ id: person.id, displayName: person.display_name, aliases: person.aliases }));
   }
 
-  async function runAction(input: string, requestId: string, originalInput = input) {
+  async function executeAction(requestId: string, personIds: string[], successContent?: string) {
+    if (!supabase) throw new Error('Gurtu is not connected yet.');
+    const { data: result, error: executeError } = await supabase.functions.invoke('process-memory-input', {
+      body: { mode: 'execute', request_id: requestId, person_ids: personIds, confirmed: true },
+    });
+    if (executeError || result?.ok !== true) throw executeError ?? new Error('That change could not be saved. Please try again.');
+    const resultType = result.result_entity_type === 'event' ? 'event' : result.result_entity_type === 'list' ? 'list' : 'memory';
+    const response = await saveMessage({ role: 'assistant', content: successContent || result.message || 'Saved to your family memory.', result_type: resultType, result_id: result.result_entity_id });
+    setMessages((current) => [...current, response]);
+    setPending(null);
+    setRetryRequest(null);
+  }
+
+  async function runAction(
+    input: string,
+    requestId: string,
+    originalInput = input,
+    sourceType: 'text' | 'voice' = inputType,
+    onPhase?: (phase: 'interpret' | 'execute', successContent?: string) => void,
+  ) {
     if (!supabase) throw new Error('Gurtu is not connected yet. Your message was not saved.');
     const peopleMentioned = findPeopleMentioned(input, identities()).map((person) => person.id);
+    onPhase?.('interpret');
     const { data, error: invokeError } = await supabase.functions.invoke('process-memory-input', {
-      body: { mode: 'interpret', input_type: inputType, original_text: originalInput, corrected_text: input, request_id: requestId },
+      body: { mode: 'interpret', input_type: sourceType, original_text: originalInput, corrected_text: input, request_id: requestId },
     });
     if (invokeError) throw invokeError;
     const parsed = ActionProposalSchema.safeParse(data?.proposal);
@@ -108,23 +143,16 @@ export function TalkPage() {
       return;
     }
     if (proposal.action === 'remove_list_item') {
-      setPending({ requestId, personIds: peopleMentioned });
+      setPending({ requestId, personIds: peopleMentioned, input, originalInput, inputType: sourceType });
       const response = await saveMessage({ role: 'assistant', content: `Do you want me to remove “${proposal.item_text}” from ${proposal.list_title}?` });
       setMessages((current) => [...current, response]);
       return;
     }
-    const { data: result, error: executeError } = await supabase.functions.invoke('process-memory-input', {
-      body: { mode: 'execute', request_id: requestId, person_ids: peopleMentioned, confirmed: true },
-    });
-    if (executeError || result?.ok !== true) throw executeError ?? new Error('That change could not be saved. Please try again.');
-    const resultType = result.result_entity_type === 'event' ? 'event' : result.result_entity_type === 'list' ? 'list' : 'memory';
-    let content = result.message || 'Saved to your family memory.';
-    if (resultType === 'event' && proposal.action === 'create_event') {
-      content = `${proposal.title} · ${eventDate(proposal.local_date)}${proposal.all_day ? ' · All day' : ` · ${proposal.local_time} · ${eventZoneLabel(proposal.time_zone)}`}. Saved to your family memories and calendar.`;
-    }
-    const response = await saveMessage({ role: 'assistant', content, result_type: resultType, result_id: result.result_entity_id });
-    setMessages((current) => [...current, response]);
-    setPending(null);
+    const successContent = proposal.action === 'create_event'
+      ? `${proposal.title} · ${eventDate(proposal.local_date)}${proposal.all_day ? ' · All day' : ` · ${proposal.local_time} · ${eventZoneLabel(proposal.time_zone)}`}. Saved to your family memories and calendar.`
+      : undefined;
+    onPhase?.('execute', successContent);
+    await executeAction(requestId, peopleMentioned, successContent);
   }
 
   async function send(event: FormEvent<HTMLFormElement>) {
@@ -137,10 +165,16 @@ export function TalkPage() {
     }
     setBusy(true);
     setError(null);
+    setRetryRequest(null);
     setText('');
     const userMessage = await saveMessage({ role: 'user', content: value });
     setMessages((current) => [...current, userMessage]);
     const requestId = inputType === 'voice' && voiceRequestId ? voiceRequestId : crypto.randomUUID();
+    let retryPhase: RetryRequest['phase'] = 'ask';
+    let retrySuccessContent: string | undefined;
+    const sourceType = inputType;
+    const originalInput = sourceType === 'voice' ? voiceOriginalText || value : value;
+    const peopleMentioned = findPeopleMentioned(value, identities()).map((person) => person.id);
     try {
       if (isQuestion(value)) {
         const { data, error: askError } = await supabase.functions.invoke('ask-memory', { body: { question: value } });
@@ -151,16 +185,47 @@ export function TalkPage() {
         });
         setMessages((current) => [...current, answer]);
       } else {
-        await runAction(value, requestId, inputType === 'voice' ? voiceOriginalText || value : value);
+        retryPhase = 'interpret';
+        await runAction(value, requestId, originalInput, sourceType, (phase, successContent) => { retryPhase = phase; retrySuccessContent = successContent; });
       }
       setInputType('text');
       setVoiceOriginalText('');
       setVoiceRequestId(null);
+      setRetryRequest(null);
     } catch (cause) {
-      setError(friendlyError(cause, 'We could not complete that. Your original words are still in the conversation. Please try again.'));
+      setRetryRequest({ requestId, input: value, originalInput, inputType: sourceType, personIds: peopleMentioned, mode: isQuestion(value) ? 'ask' : 'action', phase: retryPhase, successContent: retrySuccessContent });
+      setError(await friendlyFunctionError(cause, 'We could not complete that. Your original words are still in the conversation. Please try again.'));
     } finally {
       setBusy(false);
     }
+  }
+
+  async function retryFailedMessage() {
+    if (!retryRequest || !supabase || busy) return;
+    const request = retryRequest;
+    setBusy(true);
+    setError(null);
+    try {
+      if (request.mode === 'ask') {
+        const { data, error: askError } = await supabase.functions.invoke('ask-memory', { body: { question: request.input } });
+        if (askError || typeof data?.answer !== 'string') throw askError ?? new Error('No answer was returned.');
+        const answer = await saveMessage({ role: 'assistant', content: data.answer, result_type: 'answer', sources: Array.isArray(data.sources) ? data.sources : [] });
+        setMessages((current) => [...current, answer]);
+      } else if (request.phase === 'execute') {
+        await executeAction(request.requestId, request.personIds, request.successContent);
+      } else {
+        await runAction(request.input, request.requestId, request.originalInput, request.inputType, (phase, successContent) => {
+          setRetryRequest({ ...request, phase, successContent });
+        });
+      }
+      setRetryRequest(null);
+      setError(null);
+      setInputType('text');
+      setVoiceOriginalText('');
+      setVoiceRequestId(null);
+    } catch (cause) {
+      setError(await friendlyFunctionError(cause, 'The retry did not complete. Your original message is still here. Please try again.'));
+    } finally { setBusy(false); }
   }
 
   async function confirmRemoval() {
@@ -175,8 +240,10 @@ export function TalkPage() {
       const response = await saveMessage({ role: 'assistant', content: data.message || 'The list was updated.', result_type: 'list', result_id: data.result_entity_id });
       setMessages((current) => [...current, response]);
       setPending(null);
+      setRetryRequest(null);
     } catch (cause) {
-      setError(friendlyError(cause, 'That item could not be removed. Please try again.'));
+      setRetryRequest({ ...pending, mode: 'action', phase: 'execute' });
+      setError(await friendlyFunctionError(cause, 'That item could not be removed. Please try again.'));
     } finally { setBusy(false); }
   }
 
@@ -199,7 +266,7 @@ export function TalkPage() {
           {busy ? <p className="talk-thinking">Gurtu is thinking…</p> : null}
           <div ref={endRef} />
         </div>
-        {error ? <StatusMessage tone="error">{error}</StatusMessage> : null}
+        {error ? <div className="talk-error"><StatusMessage tone="error">{error}</StatusMessage>{retryRequest ? <button className="button button--secondary talk-retry" type="button" onClick={() => void retryFailedMessage()} disabled={busy}>{busy ? 'Trying again…' : 'Try again'}</button> : null}</div> : null}
         <form className="talk-composer" onSubmit={(event) => void send(event)}>
           <VoiceRecorder onTranscript={(transcript, requestId) => { setText(transcript); setVoiceOriginalText(transcript); setVoiceRequestId(requestId); setInputType('voice'); setError(null); }} />
           <textarea className="text-area talk-input" aria-label="Message to Gurtu" rows={2} maxLength={8000} placeholder="Type in Telugu or English…" value={text} onChange={(event) => { setText(event.target.value); if (inputType !== 'voice') setInputType('text'); }} />

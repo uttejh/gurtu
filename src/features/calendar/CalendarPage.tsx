@@ -7,7 +7,7 @@ import { PeoplePicker } from '../shared/PeoplePicker';
 import { StatusMessage } from '../../components/StatusMessage';
 import { useFamilyPeople } from '../shared/useFamilyPeople';
 import { useMyProfile } from '../shared/useMyProfile';
-import { formatEventTime, localEventTimeToUtc } from '../../lib/events';
+import { formatEventDate, formatEventTime, localEventTimeToUtc } from '../../lib/events';
 import { supabase } from '../../lib/supabase';
 
 interface CalendarEvent {
@@ -86,6 +86,7 @@ export function CalendarPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [now, setNow] = useState(() => Date.now());
   const profileZoneInitialized = useRef(false);
 
   const loadEvents = useCallback(async () => {
@@ -99,6 +100,10 @@ export function CalendarPage() {
   }, []);
 
   useEffect(() => { void loadEvents(); }, [loadEvents]);
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
   useEffect(() => {
     if (!profile?.timezone || profileZoneInitialized.current) return;
     const current = Temporal.Now.zonedDateTimeISO(profile.timezone).toPlainDate().toString();
@@ -123,8 +128,20 @@ export function CalendarPage() {
     return result;
   }, [events]);
   const selectedEvents = eventsByDate.get(selectedDate) ?? [];
+  const monthEvents = events.filter((event) => localDate(event).startsWith(`${month}-`));
+  const nextEvent = events.find((event) => Date.parse(event.ends_at) > now);
   const selectedDateLabel = Temporal.PlainDate.from(selectedDate).toLocaleString('en', { weekday: 'long', month: 'long', day: 'numeric' });
   const eventZone = selectedPeople.length ? people.find((person) => person.id === selectedPeople[0])?.timezone || profile?.timezone || baseZone : profile?.timezone || baseZone;
+
+  function navigateToMonth(nextMonth: Temporal.PlainYearMonth) {
+    const nextDate = nextMonth.equals(Temporal.PlainDate.from(today).toPlainYearMonth())
+      ? today
+      : Temporal.PlainDate.from({ year: nextMonth.year, month: nextMonth.month, day: 1 }).toString();
+    setMonth(nextMonth.toString());
+    setSelectedDate(nextDate);
+    setShowForm(false);
+    setEditingEvent(null);
+  }
 
   function resetForm(forDate = selectedDate) {
     setTitle(''); setDate(forDate); setTime(''); setEndTime(''); setAllDay(false); setSelectedPeople([]); setEditingEvent(null); setShowForm(true); setError(null); setNotice(null);
@@ -184,11 +201,11 @@ export function CalendarPage() {
     <PageLayout title="Calendar" backTo="/">
       <section className="calendar-section" aria-label="Family calendar">
         <div className="calendar-month-heading">
-          <div><h3>{monthLabel}</h3><p>Family calendar</p></div>
+          <div><h3>{monthLabel}</h3><p>{monthEvents.length ? `${monthEvents.length} ${monthEvents.length === 1 ? 'event' : 'events'} this month` : 'No events this month'}</p></div>
           <div className="calendar-month-controls">
-            <button className="calendar-nav-button" type="button" onClick={() => setMonth(monthValue.subtract({ months: 1 }).toString())} aria-label="Previous month"><ArrowLeft aria-hidden="true" /></button>
-            <button className="calendar-today-button" type="button" onClick={() => { setMonth(Temporal.PlainDate.from(today).toPlainYearMonth().toString()); setSelectedDate(today); }}>Today</button>
-            <button className="calendar-nav-button" type="button" onClick={() => setMonth(monthValue.add({ months: 1 }).toString())} aria-label="Next month"><ArrowRight aria-hidden="true" /></button>
+            <button className="calendar-nav-button" type="button" onClick={() => navigateToMonth(monthValue.subtract({ months: 1 }))} aria-label="Previous month"><ArrowLeft aria-hidden="true" /></button>
+            <button className="calendar-today-button" type="button" onClick={() => navigateToMonth(Temporal.PlainDate.from(today).toPlainYearMonth())}>Today</button>
+            <button className="calendar-nav-button" type="button" onClick={() => navigateToMonth(monthValue.add({ months: 1 }))} aria-label="Next month"><ArrowRight aria-hidden="true" /></button>
           </div>
         </div>
         <div className="calendar-grid" role="grid" aria-label={monthLabel}>
@@ -202,10 +219,11 @@ export function CalendarPage() {
             </button>;
           })}
         </div>
+        {!monthEvents.length && nextEvent ? <button className="calendar-next-event" type="button" onClick={() => { const next = localDate(nextEvent); setSelectedDate(next); setMonth(Temporal.PlainDate.from(next).toPlainYearMonth().toString()); setShowForm(false); }}><span>Next event</span><strong>{nextEvent.title}</strong><span>{formatEventDate(nextEvent.starts_at, nextEvent.timezone)} · Go to date</span></button> : null}
         <section className="calendar-agenda" aria-labelledby="selected-date-heading">
           <div className="calendar-agenda-heading"><div><h3 id="selected-date-heading">{selectedDateLabel}</h3><p>Selected date</p></div><span className="calendar-event-count">{selectedEvents.length} {selectedEvents.length === 1 ? 'event' : 'events'}</span></div>
           {loading ? <p className="muted-copy">Loading calendar…</p> : null}
-          {!loading && !selectedEvents.length && !showForm ? <p className="calendar-empty">No events on this day yet.</p> : null}
+          {!loading && !error && !selectedEvents.length && !showForm ? <p className="calendar-empty">No events on this day yet.</p> : null}
           <div className="calendar-agenda-list">{selectedEvents.map((event) => <EventCard key={event.id} event={event} canEdit={event.owner_household_id === profile?.household_id} onEdit={() => beginEdit(event)} />)}</div>
           {showForm ? <form className="calendar-form calendar-form--open" onSubmit={(event) => void addEvent(event)}>
             <h4>Add an event</h4>
