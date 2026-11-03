@@ -10,6 +10,7 @@ import { useFamilyPeople } from '../shared/useFamilyPeople';
 import { ActionProposalSchema, type ActionProposal } from '../../lib/actions';
 import { findPeopleMentioned, type PersonIdentity } from '../../lib/people';
 import { friendlyFunctionError } from '../../lib/errors';
+import { isQuestion } from '../../lib/intent';
 import { supabase } from '../../lib/supabase';
 
 interface TalkMessage {
@@ -46,11 +47,6 @@ interface RetryRequest {
   phase: 'ask' | 'interpret' | 'execute';
   successContent?: string;
   conversationContext?: ConversationTurn[];
-}
-
-function isQuestion(value: string): boolean {
-  return /\?|\b(where|when|who|what|why|how|which|explain|describe|summarize|tell me about|tell me how|can you|could you|do you know)\b/iu.test(value.trim())
-    || /(ఎక్కడ(?:ికి|ినుంచి)?|ఎప్పుడు|ఎవరు|ఏమిటి|ఏమి|ఏంటి|ఎలా|ఎవరి|ఎవరికి|ఎందుకు|ఎంత|ఏది|ఏవి|ఉందా|వుందా|తెలుసా|చెప్పగలవా|చెప్పగలరా|వివరించు|చెప్పు)(?:[.!?\s]|$)/u.test(value);
 }
 
 function eventDate(value: string): string {

@@ -1,6 +1,8 @@
+import { Temporal } from 'npm:@js-temporal/polyfill@0.5.1';
 import { z } from 'npm:zod@4.6.7';
 import { AskOutput, AskOutputSchema } from '../_shared/actions.ts';
 import { buildSearchTerms, rankEvidence, type AskEvidence } from '../_shared/ask-search.ts';
+import { findCalendarRange, isCalendarQuestion, type CalendarRange } from '../_shared/calendar-range.ts';
 import { consumeLimit, HttpError, readJson, withRequest, type RequestContext } from '../_shared/http.ts';
 import { openAIJson } from '../_shared/openai.ts';
 
@@ -58,8 +60,8 @@ async function retrieve(context: RequestContext, question: string, terms: string
     context.supabase.from('lists').select('id,title,created_at,list_items(id,item_text,is_completed,position),list_people(people(display_name))').or(orTerms('title', terms)).limit(60),
     context.supabase.from('list_items').select('id,item_text,is_completed,created_at,lists!inner(id,title,created_at,list_people(people(display_name)))').or(orTerms('item_text', terms)).limit(MAX_CANDIDATES),
     overview
-      ? context.supabase.from('events').select('id,title,description,starts_at,ends_at,timezone,is_all_day,created_at,event_people(people(display_name))').gte('ends_at', new Date().toISOString()).order('starts_at').limit(80)
-      : context.supabase.from('events').select('id,title,description,starts_at,ends_at,timezone,is_all_day,created_at,event_people(people(display_name))').or(orTerms('title', terms)).limit(60),
+      ? context.supabase.from('events').select(EVENT_COLUMNS).gte('ends_at', new Date().toISOString()).order('starts_at').limit(80)
+      : context.supabase.from('events').select(EVENT_COLUMNS).or(orTerms('title', terms)).limit(60),
   ]);
   if ([memories, locations, items, lists, listItems, events].some((result) => result.error)) {
     console.info(JSON.stringify({ metric: 'database_retrieval', duration_ms: Math.round(performance.now() - queryStartedAt), outcome: 'error' }));
@@ -105,11 +107,7 @@ async function retrieve(context: RequestContext, question: string, terms: string
     if (!row.lists) continue;
     evidence.push({ id: row.lists.id, kind: 'list', created_at: row.lists.created_at, content: `${row.lists.title}\n${row.is_completed ? '[done]' : '[open]'} ${row.item_text}` });
   }
-  for (const row of (events.data ?? []) as Array<{ id: string; title: string; description: string | null; starts_at: string; ends_at: string; timezone: string; is_all_day: boolean; created_at: string }>) {
-    const localDate = new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeZone: row.timezone }).format(new Date(row.starts_at));
-    const localTime = row.is_all_day ? 'all day' : new Intl.DateTimeFormat('en', { timeStyle: 'short', timeZone: row.timezone }).format(new Date(row.starts_at));
-    evidence.push({ id: row.id, kind: 'calendar event', created_at: row.created_at, content: `${row.title}\n${localDate} ${localTime} (${row.timezone})${row.description ? `\n${row.description}` : ''}` });
-  }
+  for (const row of (events.data ?? []) as EventRow[]) evidence.push(eventEvidence(row));
   const ranked = rankEvidence(evidence, terms, question);
   if (overview) {
     const included = new Set(ranked.map((record) => `${record.kind}:${record.id}`));
@@ -123,6 +121,54 @@ async function retrieve(context: RequestContext, question: string, terms: string
 }
 
 type ConversationTurn = { role: 'user' | 'assistant'; content: string };
+type EventRow = { id: string; title: string; description: string | null; starts_at: string; ends_at: string; timezone: string; is_all_day: boolean; created_at: string };
+
+const EVENT_COLUMNS = 'id,title,description,starts_at,ends_at,timezone,is_all_day,created_at,event_people(people(display_name))';
+
+function eventWhen(row: EventRow): string {
+  const localDate = new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeZone: row.timezone }).format(new Date(row.starts_at));
+  const localTime = row.is_all_day ? 'all day' : new Intl.DateTimeFormat('en', { timeStyle: 'short', timeZone: row.timezone }).format(new Date(row.starts_at));
+  return `${localDate} ${localTime} (${row.timezone})`;
+}
+
+function eventEvidence(row: EventRow): Evidence {
+  return { id: row.id, kind: 'calendar event', created_at: row.created_at, content: `${row.title}\n${eventWhen(row)}${row.description ? `\n${row.description}` : ''}` };
+}
+
+function localMidnightUtc(date: string, timeZone: string): string {
+  return Temporal.PlainDate.from(date).toZonedDateTime({ timeZone }).toInstant().toString();
+}
+
+// Answers "do I have any events this month?" style questions from the calendar
+// table for the household-local period, instead of keyword search.
+async function answerCalendarRange(context: RequestContext, question: string, range: CalendarRange, conversationContext: ConversationTurn[]) {
+  const timeZone = context.profile.timezone;
+  const startsAt = localMidnightUtc(range.startDate, timeZone);
+  const endsAt = localMidnightUtc(range.endDate, timeZone);
+  const { data, error } = await context.supabase.from('events').select(EVENT_COLUMNS)
+    .lt('starts_at', endsAt).gt('ends_at', startsAt)
+    .order('starts_at', { ascending: true }).limit(100);
+  if (error) throw new HttpError(503, 'We could not check the family calendar right now. Please try again.');
+  const rows = (data ?? []) as EventRow[];
+  const telugu = /[\u0C00-\u0C7F]/u.test(question);
+  if (!rows.length) {
+    return {
+      answer: telugu ? `${range.label.te} కుటుంబ క్యాలెండర్‌లో ఈవెంట్లు ఏమీ లేవు.` : `There are no events on the family calendar ${range.label.en}.`,
+      found: false,
+      sources: [],
+    };
+  }
+  const evidence = rows.map(eventEvidence);
+  const scopedQuestion = `${question}\n[Calendar period: ${range.startDate} up to but not including ${range.endDate}, ${timeZone}. Every supplied event falls in this period; cite all of them.]`;
+  const answer = await answerFromEvidence(scopedQuestion, evidence, conversationContext).catch(() => null);
+  if (answer) return answer;
+  const lines = rows.map((row) => `• ${row.title} — ${eventWhen(row)}`).join('\n');
+  return {
+    answer: telugu ? `${range.label.te} ఉన్న ఈవెంట్లు:\n${lines}` : `Here is what is on the family calendar ${range.label.en}:\n${lines}`,
+    found: true,
+    sources: evidence.map((record) => ({ id: record.id, original_text: record.content, created_at: record.created_at, kind: record.kind })),
+  };
+}
 
 async function expandSearchTerms(question: string, conversationContext: ConversationTurn[]): Promise<string[]> {
   const raw = await openAIJson<unknown>({
@@ -187,6 +233,11 @@ async function handler(context: RequestContext, request: Request) {
   await consumeLimit(context, 'ai_ask');
   const question = parsed.data.question;
   const conversationContext = parsed.data.conversation_context ?? [];
+  if (isCalendarQuestion(question)) {
+    const today = Temporal.Now.zonedDateTimeISO(context.profile.timezone).toPlainDate().toString();
+    const range = findCalendarRange(question, today);
+    if (range) return await answerCalendarRange(context, question, range, conversationContext);
+  }
   const initialTerms = buildSearchTerms(question);
   const initialEvidence = await retrieve(context, question, initialTerms);
   const initialAnswer = await answerFromEvidence(question, initialEvidence, conversationContext);
