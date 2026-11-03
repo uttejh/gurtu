@@ -81,6 +81,7 @@ export function ListsPage() {
     const value = itemDrafts[list.id]?.trim();
     if (!supabase || !profile || !value) return;
     setBusy(true);
+    setFailed(false);
     const { error } = await supabase.rpc('change_gurtu_list_item', {
       p_action: 'add',
       p_list_id: list.id,
@@ -100,9 +101,10 @@ export function ListsPage() {
 
   async function setItemCompleted(item: ListItem, completed: boolean) {
     if (!supabase) return;
-    setBusy(true);
     const listId = lists.find((list) => list.list_items?.some((entry) => entry.id === item.id))?.id;
     if (!listId) return;
+    setBusy(true);
+    setFailed(false);
     const { error } = await supabase.rpc('change_gurtu_list_item', {
       p_action: completed ? 'complete' : 'uncomplete',
       p_list_id: listId,
@@ -121,9 +123,10 @@ export function ListsPage() {
 
   async function removeItem(item: ListItem) {
     if (!supabase) return;
-    setBusy(true);
     const listId = lists.find((list) => list.list_items?.some((entry) => entry.id === item.id))?.id;
     if (!listId) return;
+    setBusy(true);
+    setFailed(false);
     const { error } = await supabase.rpc('change_gurtu_list_item', {
       p_action: 'remove',
       p_list_id: listId,

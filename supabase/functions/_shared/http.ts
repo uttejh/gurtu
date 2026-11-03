@@ -7,8 +7,10 @@ function originAllowed(origin: string): boolean {
   if (APP_ORIGINS.includes(origin)) return true;
   if (origin === 'http://localhost:5173' || origin === 'http://127.0.0.1:5173') return true;
   try {
-    const hostname = new URL(origin).hostname;
-    return hostname.endsWith('.pages.dev');
+    // Allow only this app's Cloudflare Pages production and preview hosts,
+    // not every *.pages.dev site.
+    const url = new URL(origin);
+    return url.protocol === 'https:' && (url.hostname === 'gurtu.pages.dev' || url.hostname.endsWith('.gurtu.pages.dev'));
   } catch {
     return false;
   }

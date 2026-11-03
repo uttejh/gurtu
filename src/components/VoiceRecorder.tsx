@@ -61,7 +61,7 @@ export function VoiceRecorder({ onTranscript, compact = false }: { onTranscript:
         setMessage({ text: await friendlyFunctionError(error, "Gurtu couldn't transcribe the recording. No family memory was saved. Please try again or type instead."), tone: 'error' });
         return;
       }
-      onTranscript(data.transcript, data.request_id);
+      onTranscript(data.transcript, typeof data.request_id === 'string' ? data.request_id : requestId);
       setMessage({ text: 'Transcript added to your message. Edit it if needed, then send.', tone: 'success' });
     } catch {
       setMessage({ text: receiptMessage(), tone: 'error' });

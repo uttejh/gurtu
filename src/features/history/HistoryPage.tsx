@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { PageLayout } from '../../components/PageLayout';
 import { StatusMessage } from '../../components/StatusMessage';
 import { supabase } from '../../lib/supabase';
+import { useMyProfile } from '../shared/useMyProfile';
 
 interface HistoryRecord {
   id: string;
@@ -16,6 +17,7 @@ const ACTION_LABELS: Record<string, string> = {
   list_created: 'List created',
   event_created: 'Calendar event added',
   event_updated: 'Calendar event updated',
+  event_deleted: 'Calendar event deleted',
 };
 
 function formatDate(timestamp: string): string {
@@ -23,19 +25,25 @@ function formatDate(timestamp: string): string {
 }
 
 export function HistoryPage() {
+  const { profile, loading: profileLoading, failed: profileFailed } = useMyProfile();
+  const householdId = profile?.household_id ?? null;
   const [records, setRecords] = useState<HistoryRecord[]>([]);
   const [loading, setLoading] = useState(Boolean(supabase));
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
-    if (!supabase) {
+    if (!supabase || profileLoading) return;
+    if (!householdId) {
+      setFailed(profileFailed);
       setLoading(false);
       return;
     }
     let active = true;
+    // Administrators can read every household's activity; this page only shows the user's own household.
     void supabase
       .from('activity_log')
       .select('id,action,record_type,created_at')
+      .eq('household_id', householdId)
       .neq('record_type', 'list_item')
       .order('created_at', { ascending: false })
       .limit(100)
@@ -46,7 +54,7 @@ export function HistoryPage() {
         setLoading(false);
       });
     return () => { active = false; };
-  }, []);
+  }, [householdId, profileFailed, profileLoading]);
 
   return (
     <PageLayout title="History" backTo="/">

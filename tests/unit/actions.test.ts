@@ -54,4 +54,21 @@ describe('AI action validation', () => {
   it('rejects unsupported actions', () => {
     expect(ActionProposalSchema.safeParse({ action: 'send_notification' }).success).toBe(false);
   });
+  it('accepts list item updates and removals in the shape the server returns', () => {
+    const update = ActionProposalSchema.safeParse({
+      action: 'update_list_item',
+      list_title: 'Groceries',
+      item_text: 'Milk',
+      completed: true,
+      people_mentions: [],
+    });
+    const removal = ActionProposalSchema.safeParse({
+      action: 'remove_list_item',
+      list_title: 'Groceries',
+      item_text: 'Milk',
+      people_mentions: [],
+    });
+    expect(update.success).toBe(true);
+    expect(removal.success).toBe(true);
+  });
 });

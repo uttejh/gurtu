@@ -8,8 +8,8 @@ const InputSchema = z.object({
   question: z.string().trim().min(1).max(2000),
   conversation_context: z.array(z.object({
     role: z.enum(['user', 'assistant']),
-    content: z.string().trim().min(1).max(300),
-  }).strict()).max(4).optional(),
+    content: z.string().trim().min(1).max(8000).transform((value) => value.slice(0, 500)),
+  }).strict()).max(12).optional(),
 }).strict();
 const SearchTermOutput = z.object({ terms: z.array(z.string().trim().min(1).max(80)).max(20) }).strict();
 const SearchTermSchema = {
@@ -58,7 +58,7 @@ async function retrieve(context: RequestContext, question: string, terms: string
     context.supabase.from('lists').select('id,title,created_at,list_items(id,item_text,is_completed,position),list_people(people(display_name))').or(orTerms('title', terms)).limit(60),
     context.supabase.from('list_items').select('id,item_text,is_completed,created_at,lists!inner(id,title,created_at,list_people(people(display_name)))').or(orTerms('item_text', terms)).limit(MAX_CANDIDATES),
     overview
-      ? context.supabase.from('events').select('id,title,description,starts_at,ends_at,timezone,is_all_day,created_at,event_people(people(display_name))').order('starts_at').limit(80)
+      ? context.supabase.from('events').select('id,title,description,starts_at,ends_at,timezone,is_all_day,created_at,event_people(people(display_name))').gte('ends_at', new Date().toISOString()).order('starts_at').limit(80)
       : context.supabase.from('events').select('id,title,description,starts_at,ends_at,timezone,is_all_day,created_at,event_people(people(display_name))').or(orTerms('title', terms)).limit(60),
   ]);
   if ([memories, locations, items, lists, listItems, events].some((result) => result.error)) {

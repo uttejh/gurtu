@@ -40,12 +40,14 @@ const UpdateListItem = z.object({
   list_title: PlainText,
   item_text: PlainText,
   completed: z.boolean(),
+  people_mentions: PersonMentions,
 }).strict();
 
 const RemoveListItem = z.object({
   action: z.literal('remove_list_item'),
   list_title: PlainText,
   item_text: PlainText,
+  people_mentions: PersonMentions,
 }).strict();
 
 const CreateEvent = z.object({

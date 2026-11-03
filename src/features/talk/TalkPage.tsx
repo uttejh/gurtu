@@ -231,8 +231,11 @@ export function TalkPage() {
     setBusy(true);
     setError(null);
     setRetryRequest(null);
+    setPending(null);
     setText('');
-    const conversationContext = messages.slice(-12).map(({ role, content }) => ({ role, content: [...content].slice(0, 500).join('') }));
+    const conversationContext = messages.slice(-12)
+      .map(({ role, content }) => ({ role, content: content.trim().slice(0, 500).trim() }))
+      .filter((turn) => turn.content.length > 0);
     saveMessage({ role: 'user', content: value });
     const requestId = inputType === 'voice' && voiceRequestId ? voiceRequestId : crypto.randomUUID();
     let retryPhase: RetryRequest['phase'] = 'ask';

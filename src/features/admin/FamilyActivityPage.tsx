@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { PageLayout } from '../../components/PageLayout';
 import { StatusMessage } from '../../components/StatusMessage';
@@ -338,6 +338,15 @@ export function FamilyActivityPage() {
   const householdName = useMemo(() => new Map(households.map((household) => [household.id, household.name])), [households]);
   const profileName = useMemo(() => new Map(profiles.map((profile) => [profile.user_id, profile.display_name])), [profiles]);
   const selectedCapture = captures.find((capture) => capture.id === selectedId) ?? null;
+  // Reloading captures (e.g. after a correction) creates new objects; keep the
+  // detail loader keyed on the selected ID so it does not re-log a view or
+  // reset the correction forms each time.
+  const capturesRef = useRef(captures);
+  const householdNameRef = useRef(householdName);
+  useEffect(() => {
+    capturesRef.current = captures;
+    householdNameRef.current = householdName;
+  }, [captures, householdName]);
 
   useEffect(() => {
     if (!supabase || !isGlobalAdmin || adminRoleLoading) return;
@@ -389,7 +398,9 @@ export function FamilyActivityPage() {
   }, [aal2, appliedFilters, loadCaptures]);
 
   useEffect(() => {
+    const selectedCapture = capturesRef.current.find((capture) => capture.id === selectedId) ?? null;
     if (!aal2 || !selectedCapture || !supabase) return;
+    const householdName = householdNameRef.current;
     let active = true;
     setDetailLoading(true);
     setDetailError('');
@@ -416,7 +427,7 @@ export function FamilyActivityPage() {
       if (active) setDetailLoading(false);
     });
     return () => { active = false; };
-  }, [aal2, householdName, selectedCapture]);
+  }, [aal2, selectedId]);
 
   async function applyFilters(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

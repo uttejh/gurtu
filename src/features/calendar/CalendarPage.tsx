@@ -186,7 +186,15 @@ export function CalendarPage() {
     event.preventDefault(); if (!supabase || !editingEvent) return;
     setBusy(true); setError(null);
     try {
-      const bounds = eventBounds(editDate, editTime, '', editingEvent.timezone, editAllDay);
+      const originalMinutes = editingEvent.is_all_day ? 0 : Math.round((Date.parse(editingEvent.ends_at) - Date.parse(editingEvent.starts_at)) / 60_000);
+      const bounds = !editAllDay && originalMinutes > 0
+        ? (() => {
+            // Keep the event's existing duration instead of resetting it to one hour.
+            if (!editTime) throw new Error('Choose a start time or mark this event as all day.');
+            const startsAt = localEventTimeToUtc(editDate, editTime, editingEvent.timezone);
+            return { startsAt, endsAt: Temporal.Instant.from(startsAt).add({ minutes: originalMinutes }).toString() };
+          })()
+        : eventBounds(editDate, editTime, '', editingEvent.timezone, editAllDay);
       const { error: updateError } = await supabase.rpc('update_gurtu_event', {
         p_event_id: editingEvent.id, p_title: editTitle.trim(), p_starts_at: bounds.startsAt, p_ends_at: bounds.endsAt,
         p_timezone: editingEvent.timezone, p_is_all_day: editAllDay, p_request_id: crypto.randomUUID(),
