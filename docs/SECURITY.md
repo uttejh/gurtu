@@ -48,3 +48,7 @@ After production setup, make a logical export of the `public` schema and its dat
 ## Shared family recall
 
 Family members are told in the chat screen that useful facts from their chats, but not the chats themselves, are shared with their household. Chat-derived `family_memories` rows store an English interpretation and source message IDs; other household members can read the fact but not the messages it came from. Recall is household-scoped by RLS, including for the global administrator, and the vector search function runs with the caller's permissions. Indexing jobs can be claimed and applied only by the login that owns them. Person and source IDs proposed by the model are filtered to the caller's family and conversation in the database.
+
+## Household vocabulary
+
+Vocabulary is household-scoped by RLS with no cross-household administrator policy. Clients cannot write it directly. A person entry can link only to an active person in the caller's family. Spellings proposed by the model must appear word for word in the family member's own message, are capped per step, and never override a rejected pair or an existing confirmed meaning. Person identities are linked only by an explicit statement.

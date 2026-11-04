@@ -35,6 +35,7 @@ export type ReplyProposal =
   | { action: 'remove_list_item'; list_title: string; item_text: string }
   | { action: 'update_event'; event_title: string }
   | { action: 'delete_event'; event_title: string; local_date: string | null }
+  | { action: 'teach_vocabulary'; canonical_term: string; aliases: string[]; relation: 'same' | 'not_same' }
   | { action: 'clarify'; question: string };
 
 /** A friendly confirmation after a save. Undefined means use the server's own message. */
@@ -57,6 +58,9 @@ export function successMessage(input: string, proposal: ReplyProposal): string |
     case 'add_list_items': return `సరే — ${proposal.list_title} జాబితాకు చేర్చాను.`;
     case 'update_list_item': return `సరే — ${proposal.list_title} జాబితాను నవీకరించాను.`;
     case 'update_event': return `సరే — ${proposal.event_title} ఈవెంట్‌ను నవీకరించాను.`;
+    case 'teach_vocabulary': return proposal.relation === 'same'
+      ? `సరే — ${proposal.aliases.join(', ')} అంటే ${proposal.canonical_term} అని గుర్తుంచుకుంటాను.`
+      : `సరే — ${proposal.aliases.join(', ')}, ${proposal.canonical_term} వేర్వేరు అని గుర్తుంచుకుంటాను.`;
     default: return undefined;
   }
 }
@@ -74,7 +78,15 @@ export function deleteEventQuestion(input: string, title: string, date: string |
     : `Should I delete “${title}”${when} from your calendar?`;
 }
 
-export function confirmedMessage(telugu: boolean, target: 'event' | 'list', serverMessage: string | undefined): string {
+/** Asked before an alias that already means something else is given a new meaning. */
+export function replaceVocabularyQuestion(input: string, alias: string, currentMeaning: string, newMeaning: string): string {
+  return isTeluguText(input)
+    ? `ఇప్పటివరకు “${alias}” అంటే ${currentMeaning}. ఇకపై ${newMeaning} అని గుర్తుంచుకోవాలా?`
+    : `“${alias}” currently means ${currentMeaning}. Should it mean ${newMeaning} from now on?`;
+}
+
+export function confirmedMessage(telugu: boolean, target: 'event' | 'list' | 'vocabulary', serverMessage: string | undefined): string {
+  if (target === 'vocabulary') return telugu ? 'సరే — గుర్తుంచుకుంటాను.' : serverMessage || 'I will remember that.';
   if (target === 'event') return telugu ? 'సరే — ఈవెంట్‌ను క్యాలెండర్ నుంచి తొలగించాను.' : serverMessage || 'The event was deleted from your calendar.';
   return telugu ? 'సరే — ఆ అంశాన్ని జాబితా నుంచి తీసివేశాను.' : serverMessage || 'The list was updated.';
 }

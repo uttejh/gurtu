@@ -64,6 +64,21 @@ Each conversation keeps a rolling English summary (`conversations.summary_en`) w
 
 Triggers queue work in `memory_index_jobs` when a reply or a memory is saved. After `process-message` replies, it processes up to two of the caller's own jobs in the background (`EdgeRuntime.waitUntil`). A conversation job sends the previous summary, up to thirty new messages, twelve recent household memories and the family directory to one extraction call (`gurtu_conversation_memory`, reasoning effort `low`). The result is validated in code: memories must come from the family member's own non-question messages; dates must be real; update targets must be among the supplied memories. Embeddings use `text-embedding-3-small` at 1536 dimensions. `apply_gurtu_conversation_index` then writes the summary, the new memories and status updates (an older plan becomes `completed` or `superseded`, with a link) in one transaction, guarded by the summary version. A failed job stays queued and is retried on the user's next message. Original messages are never changed.
 
+## Household vocabulary
+
+`household_vocabulary` maps an alias (nickname, Telugu or Romanised spelling, abbreviation, local word) to one canonical term per household, with an entity type (person, crop, product, equipment, supplier, location, expression, abbreviation) and a status:
+
+- **Taught in chat.** "Ramu and Ramesh are the same person" or "పత్తి అంటే cotton" is a `teach_vocabulary` action, saved as confirmed by `teach_gurtu_vocabulary` (idempotent per request). A person entry links to the family directory only on an exact, unique name match. If an alias already has another confirmed meaning, Gurtu asks before replacing it (Yes, proceed / Keep it). "X is not Y" records a rejected pair.
+- **Learned from use.** Background chat indexing may return spellings the family member actually wrote; code keeps a spelling only if it appears word for word in that person's message. Non-person terms become confirmed once seen in two different messages. Person names stay suggestions until someone states the link, so identities are never merged on spelling alone. Rejected pairs and aliases with another confirmed meaning are never suggested.
+
+Confirmed vocabulary is used, in small relevant subsets only:
+- **Interpretation:** "alias = meaning" lines for terms in the message; confirmed person aliases also tag the right person.
+- **Questions:** canonical terms for aliases in the question widen keyword and vector search, and the answer step is told the mapping.
+- **Recall extraction:** known terms and person aliases.
+- **Voice transcription:** up to 40 hints. Terms from the current chat's summary come first, then family names, then recent terms. The prompt says to use a spelling only if the word is actually spoken.
+
+There is no separate vocabulary screen; it works behind the existing chat.
+
 ## Time and events
 
 Events store UTC `starts_at` and `ends_at` plus the target household's IANA time zone. Local wall times are converted with Temporal's `disambiguation: reject`, so nonexistent or repeated daylight-saving times need a correction. All-day events use local midnight through the next local midnight.

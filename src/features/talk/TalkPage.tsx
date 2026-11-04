@@ -210,7 +210,7 @@ export function TalkPage() {
         <form className="talk-composer" onSubmit={send}>
           <textarea className="text-area talk-input" aria-label="Message to Gurtu" rows={2} maxLength={8000} placeholder="Type in Telugu or English…" value={text} onChange={(event) => setText(event.target.value)} disabled={Boolean(loadError)} />
           <div className="talk-composer__actions">
-            <VoiceRecorder compact onTranscript={(transcript, requestId) => { setText(transcript); setVoice({ requestId, transcript }); setError(null); }} />
+            <VoiceRecorder compact conversationId={conversation?.id ?? null} onTranscript={(transcript, requestId) => { setText(transcript); setVoice({ requestId, transcript }); setError(null); }} />
             <button className="button button--primary talk-send" type="submit" disabled={busy || !text.trim() || Boolean(loadError)}><PaperPlaneRight aria-hidden="true" /><span>Send</span></button>
           </div>
         </form>

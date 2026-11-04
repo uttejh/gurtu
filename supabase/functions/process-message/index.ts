@@ -15,7 +15,8 @@ import { conversationTitle, parseMessageRequest, type MessageRequest } from '../
 import { HttpError, readJson, withRequest, type RequestContext } from '../_shared/http.ts';
 import { isQuestion } from '../_shared/intent.ts';
 import { processIndexJobs } from '../_shared/memory.ts';
-import { cancelledMessage, confirmedMessage, deleteEventQuestion, isTeluguText, removalQuestion, successMessage, type ReplyProposal } from '../_shared/replies.ts';
+import { normalizeAlias } from '../_shared/people.ts';
+import { cancelledMessage, confirmedMessage, deleteEventQuestion, isTeluguText, removalQuestion, replaceVocabularyQuestion, successMessage, type ReplyProposal } from '../_shared/replies.ts';
 
 const MESSAGE_COLUMNS = 'id,conversation_id,role,content,result_type,result_id,sources,created_at,client_message_id,reply_to_message_id,input_type,metadata';
 const CONTEXT_TURNS = 12;
@@ -104,8 +105,19 @@ async function saveReply(context: RequestContext, replyTo: string, reply: Reply)
   return saved;
 }
 
-function resultType(entity: ExecuteResult['result_entity_type']): ResultType {
-  return entity === 'event' ? 'event' : entity === 'list' ? 'list' : 'memory';
+function resultType(entity: ExecuteResult['result_entity_type']): ResultType | null {
+  return entity === 'event' ? 'event' : entity === 'list' ? 'list' : entity === 'vocabulary' ? null : 'memory';
+}
+
+/** A confirmed meaning that teaching this alias would replace. */
+async function vocabularyConflict(context: RequestContext, proposal: Extract<ActionProposal, { action: 'teach_vocabulary' }>) {
+  if (proposal.relation !== 'same') return null;
+  const { data } = await context.supabase.from('household_vocabulary').select('alias,canonical_term')
+    .eq('status', 'confirmed').eq('entity_type', proposal.entity_type).limit(300);
+  const canonical = normalizeAlias(proposal.canonical_term);
+  const aliases = new Set(proposal.aliases.map(normalizeAlias));
+  return ((data ?? []) as Array<{ alias: string; canonical_term: string }>)
+    .find((row) => aliases.has(normalizeAlias(row.alias)) && normalizeAlias(row.canonical_term) !== canonical) ?? null;
 }
 
 function savedReply(text: string, proposal: ActionProposal, result: ExecuteResult): Reply {
@@ -166,6 +178,15 @@ async function respondTo(context: RequestContext, message: MessageRow): Promise<
       metadata: { kind: 'confirm', request_id: requestId, target: proposal.action === 'delete_event' ? 'event' : 'list', telugu: isTeluguText(text) },
     };
   }
+  if (proposal.action === 'teach_vocabulary' && earlier?.processing_status !== 'succeeded') {
+    const conflict = await vocabularyConflict(context, proposal);
+    if (conflict) {
+      return {
+        content: replaceVocabularyQuestion(text, conflict.alias, conflict.canonical_term, proposal.canonical_term),
+        metadata: { kind: 'confirm', request_id: requestId, target: 'vocabulary', telugu: isTeluguText(text) },
+      };
+    }
+  }
   const result = await timed('execute', () => executeCapture(context, requestId, personIds));
   return savedReply(text, proposal, result);
 }
@@ -224,7 +245,7 @@ async function handleConfirmation(context: RequestContext, request: Extract<Mess
   } else {
     const result = await timed('execute', () => executeCapture(context, metadata.request_id as string));
     reply = {
-      content: confirmedMessage(telugu, metadata.target === 'event' ? 'event' : 'list', result.message),
+      content: confirmedMessage(telugu, metadata.target === 'event' ? 'event' : metadata.target === 'vocabulary' ? 'vocabulary' : 'list', result.message),
       result_type: resultType(result.result_entity_type),
       result_id: result.result_entity_id,
       metadata: { kind: 'saved', entity_type: result.result_entity_type },

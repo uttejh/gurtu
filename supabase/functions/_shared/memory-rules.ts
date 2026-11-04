@@ -1,7 +1,7 @@
 // Rules for turning conversation turns into household recall. No runtime-specific
 // imports, so validation can be unit-tested.
 import { isQuestion } from './intent.ts';
-import { findPeopleMentioned, normalizeAlias, type PersonIdentity } from './people.ts';
+import { containsWholeAlias, findPeopleMentioned, normalizeAlias, type PersonIdentity } from './people.ts';
 
 export interface TurnMessage {
   id: string;
@@ -40,11 +40,24 @@ export interface MemoryUpdate {
   replaced_by_index: number | null;
 }
 
+export type VocabularyKind = 'person' | 'crop' | 'product' | 'equipment' | 'supplier' | 'location' | 'expression' | 'abbreviation';
+
+export interface VocabularySighting {
+  canonical_term: string;
+  alias: string;
+  entity_type: VocabularyKind;
+  source_message_number: number;
+}
+
 export interface ExtractionResult {
   summary_en: string;
   memories: ExtractedMemory[];
   updates: MemoryUpdate[];
+  vocabulary: VocabularySighting[];
 }
+
+const VOCABULARY_KINDS: VocabularyKind[] = ['person', 'crop', 'product', 'equipment', 'supplier', 'location', 'expression', 'abbreviation'];
+const MAX_VOCABULARY = 8;
 
 const MEMORY_TYPES: MemoryType[] = ['fact', 'plan', 'decision', 'completed_action', 'preference', 'other'];
 const STATUSES: MemoryStatus[] = ['current', 'completed', 'uncertain'];
@@ -88,8 +101,22 @@ export const EXTRACTION_SCHEMA = {
         additionalProperties: false,
       },
     },
+    vocabulary: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          canonical_term: { type: 'string' },
+          alias: { type: 'string' },
+          entity_type: { type: 'string', enum: VOCABULARY_KINDS },
+          source_message_number: { type: 'integer' },
+        },
+        required: ['canonical_term', 'alias', 'entity_type', 'source_message_number'],
+        additionalProperties: false,
+      },
+    },
   },
-  required: ['summary_en', 'memories', 'updates'],
+  required: ['summary_en', 'memories', 'updates', 'vocabulary'],
   additionalProperties: false,
 } as const;
 
@@ -160,7 +187,21 @@ export function validateExtraction(raw: unknown, messages: TurnMessage[], candid
       ? update.replaced_by_index as number : null;
     updates.push({ memory_id: update.memory_id, status: update.status, replaced_by_index: index });
   }
-  return { summary_en: value.summary_en.trim().slice(0, 6000), memories, updates };
+  // A spelling counts only if it appears word for word in the family member's own message.
+  const vocabulary: VocabularySighting[] = [];
+  for (const item of Array.isArray(value.vocabulary) ? value.vocabulary : []) {
+    if (!item || typeof item !== 'object' || vocabulary.length >= MAX_VOCABULARY) continue;
+    const entry = item as Record<string, unknown>;
+    const alias = typeof entry.alias === 'string' ? entry.alias.trim() : '';
+    const canonical = typeof entry.canonical_term === 'string' ? entry.canonical_term.trim() : '';
+    const number = entry.source_message_number;
+    if (!alias || !canonical || alias.length > 80 || canonical.length > 80 || normalizeAlias(alias) === normalizeAlias(canonical)) continue;
+    if (!VOCABULARY_KINDS.includes(entry.entity_type as VocabularyKind) || !Number.isInteger(number)) continue;
+    const message = messages[(number as number) - 1];
+    if (!message || message.role !== 'user' || !containsWholeAlias(message.content, alias)) continue;
+    vocabulary.push({ canonical_term: canonical, alias, entity_type: entry.entity_type as VocabularyKind, source_message_number: number as number });
+  }
+  return { summary_en: value.summary_en.trim().slice(0, 6000), memories, updates, vocabulary };
 }
 
 /** Resolves model-reported names to family people, accepting only exact name or alias matches. */

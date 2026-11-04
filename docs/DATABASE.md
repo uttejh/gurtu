@@ -32,6 +32,7 @@ All migrations live under `supabase/migrations/`. Every table below has RLS enab
 | `talk_messages` | Chat messages with server receipt time, per-login `client_message_id` (idempotency), `reply_to_message_id` (one reply per message), input type, language and metadata. | Owner login only. Saved by `start_gurtu_message` / `record_gurtu_reply`; a trigger checks ownership for direct inserts. |
 | `family_memories` | Household recall: English interpretation, embedding (`vector(1536)`), type, status, superseded link, people, occurrence dates and precision, who shared it, and source references. Saved-memory rows keep the original words; chat-derived rows keep only source message IDs. | Readable by the owning household only, including by the administrator. Written only by the indexing RPCs. |
 | `memory_index_jobs` | Durable queue of summary and recall indexing work, with attempts and safe error text. | No direct API access. Each login claims and completes only its own jobs through RPCs. |
+| `household_vocabulary` | Alias → canonical term per household, with normalised keys, script, entity type, optional family person link, status (suggested, confirmed, rejected) and the distinct source messages that suggested it. | Readable by the owning household only, including by the administrator. Written only by `teach_gurtu_vocabulary` and the indexing RPC. |
 
 ## Important relationships and indexes
 

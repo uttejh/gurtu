@@ -18,11 +18,12 @@ const Proposal = z.discriminatedUnion('action', [
   }),
   z.object({ action: z.literal('update_event'), event_title: Text.max(160), local_date: DateString, local_time: TimeString.nullable(), time_zone: z.string().min(1).max(80), all_day: z.boolean(), people_mentions: Mentions }).strict(),
   z.object({ action: z.literal('delete_event'), event_title: Text.max(160), local_date: DateString.nullable() }).strict(),
+  z.object({ action: z.literal('teach_vocabulary'), canonical_term: Text.max(80), aliases: z.array(Text.max(80)).min(1).max(10), entity_type: z.enum(['person', 'crop', 'product', 'equipment', 'supplier', 'location', 'expression', 'abbreviation']), relation: z.enum(['same', 'not_same']) }).strict(),
   z.object({ action: z.literal('clarify'), question: z.string().trim().min(1).max(240) }).strict(),
 ]);
 
 const properties = {
-  action: { type: 'string', enum: ['save_memory', 'save_item_location', 'create_list', 'add_list_items', 'update_list_item', 'remove_list_item', 'create_event', 'update_event', 'delete_event', 'clarify'] },
+  action: { type: 'string', enum: ['save_memory', 'save_item_location', 'create_list', 'add_list_items', 'update_list_item', 'remove_list_item', 'create_event', 'update_event', 'delete_event', 'teach_vocabulary', 'clarify'] },
   original_text: { type: ['string', 'null'] },
   summary: { type: ['string', 'null'] },
   item_name: { type: ['string', 'null'] },
@@ -41,6 +42,10 @@ const properties = {
   end_time_assumed: { type: ['boolean', 'null'] },
   people_mentions: { type: 'array', items: { type: 'string' } },
   question: { type: ['string', 'null'] },
+  canonical_term: { type: ['string', 'null'] },
+  aliases: { type: 'array', items: { type: 'string' } },
+  entity_type: { type: ['string', 'null'], enum: ['person', 'crop', 'product', 'equipment', 'supplier', 'location', 'expression', 'abbreviation', null] },
+  relation: { type: ['string', 'null'], enum: ['same', 'not_same', null] },
 };
 
 export const ActionOutputSchema = {
@@ -70,6 +75,10 @@ type ActionOutput = {
   end_time_assumed: boolean | null;
   people_mentions: string[];
   question: string | null;
+  canonical_term: string | null;
+  aliases: string[];
+  entity_type: string | null;
+  relation: string | null;
 };
 
 export type ActionProposal = z.infer<typeof Proposal>;
@@ -88,6 +97,7 @@ export function validateProposal(value: unknown): ActionProposal {
     create_event: ['title', 'local_date', 'local_time', 'end_time', 'time_zone', 'all_day', 'people_mentions', 'end_time_assumed'],
     update_event: ['event_title', 'local_date', 'local_time', 'time_zone', 'all_day', 'people_mentions'],
     delete_event: ['event_title', 'local_date'],
+    teach_vocabulary: ['canonical_term', 'aliases', 'entity_type', 'relation'],
     clarify: ['question'],
   };
   for (const key of keys[output.action] ?? []) fields[key] = output[key as keyof ActionOutput];

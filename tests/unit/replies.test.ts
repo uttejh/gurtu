@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cancelledMessage, deleteEventQuestion, formatLocalDate, removalQuestion, successMessage } from '../../supabase/functions/_shared/replies';
+import { cancelledMessage, deleteEventQuestion, formatLocalDate, removalQuestion, replaceVocabularyQuestion, successMessage } from '../../supabase/functions/_shared/replies';
 
 describe('deterministic chat replies', () => {
   it('formats an all-day date without shifting it across time zones', () => {
@@ -26,5 +26,10 @@ describe('deterministic chat replies', () => {
     expect(deleteEventQuestion('delete the flight', 'Flight', '2026-12-03')).toBe('Should I delete “Flight” (December 3, 2026) from your calendar?');
     expect(removalQuestion('బియ్యం తీసేయ్', 'బియ్యం', 'కిరాణా')).toMatch(/తీసివేయాలా\?$/u);
     expect(cancelledMessage(false)).toBe('Okay — I left it unchanged.');
+  });
+  it('confirms vocabulary in Telugu and asks before replacing a meaning', () => {
+    expect(successMessage('రాము అంటే రమేష్', { action: 'teach_vocabulary', canonical_term: 'రమేష్', aliases: ['రాము'], relation: 'same' })).toBe('సరే — రాము అంటే రమేష్ అని గుర్తుంచుకుంటాను.');
+    expect(successMessage('Ramu is Ramesh', { action: 'teach_vocabulary', canonical_term: 'Ramesh', aliases: ['Ramu'], relation: 'same' })).toBeUndefined();
+    expect(replaceVocabularyQuestion('Ramu is Ramesh', 'Ramu', 'Ramakrishna', 'Ramesh')).toBe('“Ramu” currently means Ramakrishna. Should it mean Ramesh from now on?');
   });
 });

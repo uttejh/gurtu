@@ -61,6 +61,19 @@ describe('conversation memory extraction rules', () => {
     expect(validateExtraction(null, messages, candidates)).toBeNull();
   });
 
+  it('keeps a spelling only when it appears word for word in the family member\'s message', () => {
+    const result = validateExtraction({
+      summary_en: 'x', memories: [], updates: [],
+      vocabulary: [
+        { canonical_term: 'Ramesh', alias: 'రమేష్', entity_type: 'person', source_message_number: 1 },
+        { canonical_term: 'Ramesh', alias: 'Rameshu', entity_type: 'person', source_message_number: 1 },
+        { canonical_term: 'memories', alias: 'Saved', entity_type: 'expression', source_message_number: 2 },
+        { canonical_term: 'tractor', alias: 'Tractor', entity_type: 'equipment', source_message_number: 3 },
+      ],
+    }, messages, candidates);
+    expect(result?.vocabulary).toEqual([{ canonical_term: 'Ramesh', alias: 'రమేష్', entity_type: 'person', source_message_number: 1 }]);
+  });
+
   it('tags people only on an exact, unambiguous name or alias match', () => {
     const people = [
       { id: 'p1', displayName: 'Ramesh', aliases: ['రమేష్', 'Ramu'] },

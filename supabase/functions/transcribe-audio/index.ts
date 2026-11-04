@@ -1,5 +1,7 @@
 import { consumeLimit, HttpError, withRequest, type RequestContext } from '../_shared/http.ts';
 import { OPENAI_BASE_URL } from '../_shared/openai.ts';
+import { loadVocabulary } from '../_shared/capture.ts';
+import { transcriptionHints } from '../_shared/vocabulary.ts';
 
 type PersonRow = { display_name: string; aliases: string[] };
 
@@ -60,8 +62,18 @@ async function handler(context: RequestContext, request: Request) {
     });
     throw new HttpError(503, 'Family voice hints are not available right now.');
   }
-  const names = ((people ?? []) as PersonRow[]).flatMap((person) => [person.display_name, ...(person.aliases ?? [])])
-    .filter(Boolean).slice(0, 160).join(', ');
+  const familyNames = ((people ?? []) as PersonRow[]).flatMap((person) => [person.display_name, ...(person.aliases ?? [])]).filter(Boolean);
+  // A small relevant subset of confirmed household vocabulary: the current chat's
+  // topic first, then recent terms. Never the whole dictionary.
+  const conversationId = form.get('conversation_id');
+  const [vocabulary, summary] = await Promise.all([
+    loadVocabulary(context),
+    typeof conversationId === 'string' && /^[0-9a-f-]{36}$/iu.test(conversationId)
+      ? context.supabase.from('conversations').select('summary_en').eq('id', conversationId).maybeSingle()
+        .then(({ data }) => (typeof data?.summary_en === 'string' ? data.summary_en : null))
+      : Promise.resolve(null),
+  ]);
+  const names = transcriptionHints(vocabulary, summary, familyNames, 40).join(', ');
   const upstreamForm = new FormData();
   let audioBytes: Uint8Array<ArrayBuffer> | null = null;
   const transcriptionStartedAt = performance.now();
@@ -70,7 +82,7 @@ async function handler(context: RequestContext, request: Request) {
     upstreamForm.append('file', new File([audioBytes], audio.name || 'family-memory-audio', { type: audio.type || 'application/octet-stream' }));
     upstreamForm.append('model', Deno.env.get('OPENAI_TRANSCRIPTION_MODEL') ?? 'gpt-transcribe');
     upstreamForm.append('response_format', 'json');
-    upstreamForm.append('prompt', `The speaker may use Telangana Telugu, English, or mix both naturally. Preserve Telugu script and the words as spoken. Family names and aliases: ${names}. Do not translate.`);
+    upstreamForm.append('prompt', `The speaker may use Telangana Telugu, English, or mix both naturally. Preserve Telugu script and the words as spoken. Names and words this family uses (spell them this way only if they are actually spoken): ${names}. Do not translate.`);
     try {
       const upstream = await fetch(`${OPENAI_BASE_URL}/audio/transcriptions`, {
         method: 'POST',

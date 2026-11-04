@@ -22,7 +22,7 @@ function recordingFileName(type: string): string {
   return type.includes('mp4') ? 'family-memory.m4a' : 'family-memory.webm';
 }
 
-export function VoiceRecorder({ onTranscript, compact = false }: { onTranscript: (transcript: string, requestId: string) => void; compact?: boolean }) {
+export function VoiceRecorder({ onTranscript, compact = false, conversationId = null }: { onTranscript: (transcript: string, requestId: string) => void; compact?: boolean; conversationId?: string | null }) {
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<BlobPart[]>([]);
@@ -55,6 +55,8 @@ export function VoiceRecorder({ onTranscript, compact = false }: { onTranscript:
     const requestId = crypto.randomUUID();
     form.append('file', blob, recordingFileName(blob.type));
     form.append('request_id', requestId);
+    // Lets the server pick vocabulary hints that fit this chat's topic.
+    if (conversationId) form.append('conversation_id', conversationId);
     try {
       const { data, error } = await supabase.functions.invoke('transcribe-audio', { body: form });
       if (error || typeof data?.transcript !== 'string' || !data.transcript.trim()) {

@@ -12,7 +12,7 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
 }
 
-function containsWholeAlias(text: string, alias: string): boolean {
+export function containsWholeAlias(text: string, alias: string): boolean {
   const normalizedAlias = normalizeAlias(alias);
   if (!normalizedAlias) return false;
   const normalizedText = normalizeAlias(text);

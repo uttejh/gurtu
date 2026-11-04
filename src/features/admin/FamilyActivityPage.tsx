@@ -6,7 +6,7 @@ import { useAuth } from '../../app/useAuth';
 import { supabase } from '../../lib/supabase';
 
 type CaptureStatus = 'transcribing' | 'received' | 'interpreting' | 'transcription_failed' | 'interpretation_failed' | 'needs_clarification' | 'awaiting_confirmation' | 'operation_pending' | 'operation_failed' | 'succeeded' | 'cancelled';
-type Intent = 'save_memory' | 'save_item_location' | 'create_list' | 'add_list_items' | 'update_list_item' | 'remove_list_item' | 'create_event' | 'update_event' | 'delete_event' | 'clarify';
+type Intent = 'save_memory' | 'save_item_location' | 'create_list' | 'add_list_items' | 'update_list_item' | 'remove_list_item' | 'create_event' | 'update_event' | 'delete_event' | 'teach_vocabulary' | 'clarify';
 
 interface Capture {
   id: string;
@@ -20,7 +20,7 @@ interface Capture {
   extracted_payload: Record<string, unknown> | null;
   selected_person_ids: string[];
   processing_status: CaptureStatus;
-  result_entity_type: 'memory' | 'item' | 'list' | 'event' | null;
+  result_entity_type: 'memory' | 'item' | 'list' | 'event' | 'vocabulary' | null;
   result_entity_id: string | null;
   error_code: string | null;
   safe_error_description: string | null;
@@ -50,7 +50,7 @@ interface RecordDetails { heading: string; facts: string[]; people: string[]; lo
 const INTENT_LABEL: Record<Intent, string> = {
   save_memory: 'Save memory', save_item_location: 'Save item location', create_list: 'Create list',
   add_list_items: 'Add list items', update_list_item: 'Update list item', remove_list_item: 'Remove list item',
-  create_event: 'Create event', update_event: 'Update event', delete_event: 'Delete event', clarify: 'Needs clarification',
+  create_event: 'Create event', update_event: 'Update event', delete_event: 'Delete event', teach_vocabulary: 'Family vocabulary', clarify: 'Needs clarification',
 };
 const STATUS_LABEL: Record<CaptureStatus, string> = {
   transcribing: 'Transcribing', received: 'Received', interpreting: 'Interpreting',
@@ -96,6 +96,16 @@ function dateEnd(value: string) {
 
 async function getRecordDetails(capture: Capture, householdsById: Map<string, string>): Promise<RecordDetails | null> {
   if (!supabase || !capture.result_entity_id || !capture.result_entity_type) return null;
+  if (capture.result_entity_type === 'vocabulary') {
+    // Household vocabulary is not readable across households; show the saved action instead.
+    const payload = capture.extracted_payload ?? {};
+    const aliases = Array.isArray(payload.aliases) ? payload.aliases.join(', ') : '';
+    return {
+      heading: 'Family vocabulary',
+      facts: [`${aliases || 'Alias'} ${payload.relation === 'not_same' ? 'is not' : 'means'} ${String(payload.canonical_term ?? '')}`, `Type: ${String(payload.entity_type ?? 'unknown')}`],
+      people: [],
+    };
+  }
   if (capture.result_entity_type === 'memory') {
     const [{ data, error }, { data: tagRows }] = await Promise.all([
       supabase.from('memories').select('original_text,summary,created_at').eq('id', capture.result_entity_id).maybeSingle(),

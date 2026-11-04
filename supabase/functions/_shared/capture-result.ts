@@ -1,4 +1,4 @@
-export type CaptureEntityType = 'memory' | 'item' | 'list' | 'event';
+export type CaptureEntityType = 'memory' | 'item' | 'list' | 'event' | 'vocabulary';
 
 export interface CompletedCapture {
   processing_status: string;
@@ -12,7 +12,9 @@ export function completedCaptureResult(capture: CompletedCapture) {
     ? 'Saved to your family memories and calendar.'
     : capture.result_entity_type === 'list'
       ? 'Your family list was updated.'
-      : 'Saved to your family memories.';
+      : capture.result_entity_type === 'vocabulary'
+        ? 'I will remember that.'
+        : 'Saved to your family memories.';
   return {
     ok: true,
     message,

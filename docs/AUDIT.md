@@ -33,7 +33,7 @@ Supabase Postgres: RLS on every application table; household helpers derive scop
 | Separate conversations, New/Continue chat (§55) | **Implemented** | Automatic titles from the first message. Existing history moved to one "Earlier chat" per login. |
 | Rolling conversation summaries (§10B) | **Implemented** (Stage 2) | Versioned summary with a cursor; background job; retry-safe. |
 | Shared family recall, pgvector, hybrid search (§10C, §12) | **Implemented** (Stage 2) | `family_memories` with English interpretations, `text-embedding-3-small` vectors and full-text, fused by rank; Telugu questions rewritten to English. Verified locally with real models: Telugu→English, English→Telugu, Romanised Telugu, household isolation, plan→completed. |
-| Family vocabulary (§15–18) | **Partially implemented** | People aliases only, sent as transcription hints. |
+| Family vocabulary (§15–18) | **Implemented** (Stage 3) | Taught in chat or learned from repeated use (non-person terms after two messages; people only when stated). Used for interpretation, person tagging, question search and voice hints. Verified locally with real models. Transcription hints were not tested with real audio. |
 | Cross-module links, dated tasks (§19–20) | **Missing** | List items have no due date; no links between modules. |
 | Farm Kharchu ledger (§26–34) | **Missing** | Stages 4–5. |
 | Duplicate warnings, corrections, undo (§36–38) | **Missing** | Admin people/location corrections only. |
@@ -96,7 +96,7 @@ households 1─* activity_log; families 1─* admin_audit_log
 |---|---|---|---|
 | 1 (this change) | `20261104000100_conversations.sql`: new `conversations`, new columns on `talk_messages`, backfill into "Earlier chat", three RPCs, one trigger. Additive; no rows deleted. | `conversation_id` becomes NOT NULL; the migration fails safely if a message's author has no profile. | Drop the trigger, RPCs and new columns; drop `conversations`. The older app version keeps working against the old columns. |
 | 2 (done) | `20261104000200_family_memory.sql`: summary columns on `conversations`; `family_memories` with `vector(1536)` and full-text indexes; `memory_index_jobs`; triggers; backfill jobs for existing memories and chats. Additive. Legacy `talk_messages` inserts are still allowed while the older app can be redeployed from the other repository. | Privacy change to household-shared recall (approved). | Drop the triggers, functions and new tables, and the summary columns; chat and saved records are untouched. |
-| 3 | Household vocabulary table. | Wrong merges of similar names. | Confirmation status; aliases are additive. |
+| 3 (done) | `20261105000100_family_vocabulary.sql`: `household_vocabulary`; intent `teach_vocabulary` and result type `vocabulary` on captures; `teach_gurtu_vocabulary`; suggestions inside `apply_gurtu_conversation_index` (re-created with a `p_vocabulary` argument). Additive. | Wrong merges of similar names. | People are linked only when stated; rejected pairs are kept. Drop the table and functions and restore the previous `apply_gurtu_conversation_index`. |
 | 4–5 | Due dates on list items; ledger, categories, handovers, allocations, links; atomic multi-operation RPCs. | Financial correctness. | Integer paise, database checks, and invariant tests before production. |
 | 6–7 | Corrections, undo, timelines, catch-up. | Privacy of catch-up summaries. | Read-only features over existing records. |
 
