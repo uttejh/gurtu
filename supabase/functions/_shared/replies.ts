@@ -94,3 +94,15 @@ export function confirmedMessage(telugu: boolean, target: 'event' | 'list' | 'vo
 export function cancelledMessage(telugu: boolean): string {
   return telugu ? 'సరే — దేనినీ మార్చలేదు.' : 'Okay — I left it unchanged.';
 }
+
+/**
+ * The reply language, decided in code from the family member's own words so that
+ * records in another language cannot pull the answer into the wrong language.
+ */
+export function replyLanguage(question: string): string {
+  const telugu = isTeluguText(question);
+  const latin = /[A-Za-z]/u.test(question);
+  if (telugu && latin) return 'the same mix of Telugu script and English that the question uses';
+  if (telugu) return 'Telugu, written in Telugu script';
+  return 'the language of the question: English, or Romanised Telugu (Telugu words in Latin letters) if the question is written that way';
+}

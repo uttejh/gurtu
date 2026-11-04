@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cancelledMessage, deleteEventQuestion, formatLocalDate, removalQuestion, replaceVocabularyQuestion, successMessage } from '../../supabase/functions/_shared/replies';
+import { cancelledMessage, deleteEventQuestion, formatLocalDate, removalQuestion, replaceVocabularyQuestion, replyLanguage, successMessage } from '../../supabase/functions/_shared/replies';
 
 describe('deterministic chat replies', () => {
   it('formats an all-day date without shifting it across time zones', () => {
@@ -31,5 +31,10 @@ describe('deterministic chat replies', () => {
     expect(successMessage('రాము అంటే రమేష్', { action: 'teach_vocabulary', canonical_term: 'రమేష్', aliases: ['రాము'], relation: 'same' })).toBe('సరే — రాము అంటే రమేష్ అని గుర్తుంచుకుంటాను.');
     expect(successMessage('Ramu is Ramesh', { action: 'teach_vocabulary', canonical_term: 'Ramesh', aliases: ['Ramu'], relation: 'same' })).toBeUndefined();
     expect(replaceVocabularyQuestion('Ramu is Ramesh', 'Ramu', 'Ramakrishna', 'Ramesh')).toBe('“Ramu” currently means Ramakrishna. Should it mean Ramesh from now on?');
+  });
+  it('decides the reply language from the question, not from the records', () => {
+    expect(replyLanguage('How much did we give Ravi?')).toMatch(/^the language of the question: English/u);
+    expect(replyLanguage('రమేష్ కి డబ్బులు ఇచ్చామా?')).toBe('Telugu, written in Telugu script');
+    expect(replyLanguage('DAP ఎరువు ఎంత?')).toMatch(/mix of Telugu script and English/u);
   });
 });
