@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(31);
+select plan(33);
 
 insert into auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at)
 values
@@ -110,6 +110,9 @@ select is((select count(*)::int from public.match_gurtu_family_memories((select 
 reset role;
 select ok((select count(*) from public.family_memories where status = 'superseded') = 0, 'no memory was superseded by the stale or foreign attempts');
 select is((select count(*)::int from public.memory_index_jobs where job_type = 'saved_memory' and status = 'done'), 1, 'the saved-memory job finished');
+delete from public.conversations where id = (select id from ids where name = 'mom_conversation');
+select is((select count(*)::int from public.family_memories where source_kind = 'conversation'), 0, 'deleting a chat removes the facts taken from it');
+select is((select count(*)::int from public.family_memories where source_kind = 'saved_memory'), 1, 'deleting a chat keeps saved memories');
 
 select * from finish();
 rollback;
