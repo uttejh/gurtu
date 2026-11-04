@@ -12,6 +12,7 @@ interface ListItem {
   item_text: string;
   is_completed: boolean;
   position: number;
+  due_on?: string | null;
 }
 
 interface FamilyList {
@@ -42,7 +43,7 @@ export function ListsPage() {
     }
     const { data, error } = await supabase
       .from('lists')
-      .select('id,title,owner_household_id,created_at,list_items(id,item_text,is_completed,position),list_people(people(display_name))')
+      .select('id,title,owner_household_id,created_at,list_items(id,item_text,is_completed,position,due_on),list_people(people(display_name))')
       .order('created_at', { ascending: false })
       .limit(100);
     setLists(error ? [] : (data ?? []) as unknown as FamilyList[]);
@@ -180,7 +181,7 @@ export function ListsPage() {
                       <li className={`list-item${item.is_completed ? ' is-complete' : ''}`} key={item.id}>
                         <label className="list-item__label">
                           <input type="checkbox" checked={item.is_completed} onChange={(event) => void setItemCompleted(item, event.target.checked)} disabled={busy} />
-                          <span>{item.item_text}</span>
+                          <span>{item.item_text}{item.due_on ? <small className="list-item__due"> · due {new Intl.DateTimeFormat('en', { day: 'numeric', month: 'short', timeZone: 'UTC' }).format(new Date(`${item.due_on}T00:00:00Z`))}</small> : null}</span>
                         </label>
                         <button className="icon-button" type="button" onClick={() => void removeItem(item)} disabled={busy} aria-label={`Remove ${item.item_text}`}>
                           <Trash aria-hidden="true" />

@@ -30,7 +30,7 @@ function indexInBackground(context: RequestContext) {
   if (typeof EdgeRuntime !== 'undefined' && EdgeRuntime?.waitUntil) EdgeRuntime.waitUntil(work);
 }
 
-type ResultType = 'memory' | 'list' | 'event' | 'answer';
+type ResultType = 'memory' | 'list' | 'event' | 'answer' | 'ledger';
 interface MessageRow {
   id: string;
   conversation_id: string;
@@ -106,7 +106,7 @@ async function saveReply(context: RequestContext, replyTo: string, reply: Reply)
 }
 
 function resultType(entity: ExecuteResult['result_entity_type']): ResultType | null {
-  return entity === 'event' ? 'event' : entity === 'list' ? 'list' : entity === 'vocabulary' ? null : 'memory';
+  return entity === 'event' ? 'event' : entity === 'list' ? 'list' : entity === 'ledger' ? 'ledger' : entity === 'vocabulary' ? null : 'memory';
 }
 
 /** A confirmed meaning that teaching this alias would replace. */
@@ -122,7 +122,7 @@ async function vocabularyConflict(context: RequestContext, proposal: Extract<Act
 
 function savedReply(text: string, proposal: ActionProposal, result: ExecuteResult): Reply {
   return {
-    content: successMessage(text, proposal as ReplyProposal) || result.message || 'Saved to your family memory.',
+    content: (proposal.action === 'family_plan' ? proposal.summary : successMessage(text, proposal as ReplyProposal)) || result.message || 'Saved to your family memory.',
     result_type: resultType(result.result_entity_type),
     result_id: result.result_entity_id,
     metadata: { kind: 'saved', entity_type: result.result_entity_type },
@@ -177,6 +177,10 @@ async function respondTo(context: RequestContext, message: MessageRow): Promise<
       content: question,
       metadata: { kind: 'confirm', request_id: requestId, target: proposal.action === 'delete_event' ? 'event' : 'list', telugu: isTeluguText(text) },
     };
+  }
+  if (proposal.action === 'family_plan' && proposal.confirm && earlier?.processing_status !== 'succeeded') {
+    // Undoing an entry or a likely duplicate payment is confirmed first.
+    return { content: proposal.confirm, metadata: { kind: 'confirm', request_id: requestId, target: 'plan', telugu: isTeluguText(text) } };
   }
   if (proposal.action === 'teach_vocabulary' && earlier?.processing_status !== 'succeeded') {
     const conflict = await vocabularyConflict(context, proposal);
@@ -245,7 +249,7 @@ async function handleConfirmation(context: RequestContext, request: Extract<Mess
   } else {
     const result = await timed('execute', () => executeCapture(context, metadata.request_id as string));
     reply = {
-      content: confirmedMessage(telugu, metadata.target === 'event' ? 'event' : metadata.target === 'vocabulary' ? 'vocabulary' : 'list', result.message),
+      content: confirmedMessage(telugu, metadata.target === 'event' ? 'event' : metadata.target === 'vocabulary' ? 'vocabulary' : metadata.target === 'plan' ? 'plan' : 'list', result.message),
       result_type: resultType(result.result_entity_type),
       result_id: result.result_entity_id,
       metadata: { kind: 'saved', entity_type: result.result_entity_type },

@@ -10,6 +10,7 @@ import { useMyProfile } from '../shared/useMyProfile';
 import { formatCalendarMonth } from '../../lib/calendar';
 import { formatEventDate, formatEventTime, localEventTimeToUtc } from '../../lib/events';
 import { supabase } from '../../lib/supabase';
+import { formatPaise } from '../../lib/money';
 
 interface CalendarEvent {
   id: string;
@@ -22,6 +23,9 @@ interface CalendarEvent {
   owner_household_id: string;
   event_people?: Array<{ people?: { display_name?: string } | null }>;
 }
+
+interface DueTask { id: string; item_text: string; due_on: string; is_completed: boolean; lists?: { title?: string } | null }
+interface DuePayment { id: string; description_en: string; due_on: string; amount_paise: number }
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -71,6 +75,8 @@ export function CalendarPage() {
   const [month, setMonth] = useState(() => Temporal.PlainDate.from(today).toPlainYearMonth().toString());
   const [selectedDate, setSelectedDate] = useState(today);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [dueTasks, setDueTasks] = useState<DueTask[]>([]);
+  const [duePayments, setDuePayments] = useState<DuePayment[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
   const [title, setTitle] = useState('');
@@ -92,11 +98,20 @@ export function CalendarPage() {
 
   const loadEvents = useCallback(async () => {
     if (!supabase) { setLoading(false); return; }
-    const { data, error: queryError } = await supabase.from('events')
-      .select('id,title,description,starts_at,ends_at,timezone,is_all_day,owner_household_id,event_people(people(display_name))')
-      .order('starts_at', { ascending: true }).limit(500);
+    // Dated tasks and payments due are shown from their own records, never copied into events.
+    const [{ data, error: queryError }, tasks, planned, fulfilled] = await Promise.all([
+      supabase.from('events')
+        .select('id,title,description,starts_at,ends_at,timezone,is_all_day,owner_household_id,event_people(people(display_name))')
+        .order('starts_at', { ascending: true }).limit(500),
+      supabase.from('list_items').select('id,item_text,due_on,is_completed,lists(title)').not('due_on', 'is', null).order('due_on').limit(500),
+      supabase.from('ledger_entries').select('id,description_en,due_on,amount_paise').eq('status', 'planned').is('voided_at', null).not('due_on', 'is', null).limit(300),
+      supabase.from('ledger_entries').select('fulfils_entry_id').not('fulfils_entry_id', 'is', null).is('voided_at', null).limit(1000),
+    ]);
     if (queryError) setError('We could not load calendar events. Please try again.');
     setEvents(queryError ? [] : (data ?? []) as unknown as CalendarEvent[]);
+    setDueTasks(tasks.error ? [] : (tasks.data ?? []) as unknown as DueTask[]);
+    const paid = new Set(((fulfilled.data ?? []) as Array<{ fulfils_entry_id: string }>).map((row) => row.fulfils_entry_id));
+    setDuePayments(planned.error ? [] : ((planned.data ?? []) as DuePayment[]).filter((row) => !paid.has(row.id)));
     setLoading(false);
   }, []);
 
@@ -129,6 +144,9 @@ export function CalendarPage() {
     return result;
   }, [events]);
   const selectedEvents = eventsByDate.get(selectedDate) ?? [];
+  const dueDates = useMemo(() => new Set([...dueTasks.map((task) => task.due_on), ...duePayments.map((payment) => payment.due_on)]), [dueTasks, duePayments]);
+  const selectedTasks = dueTasks.filter((task) => task.due_on === selectedDate);
+  const selectedPayments = duePayments.filter((payment) => payment.due_on === selectedDate);
   const monthEvents = events.filter((event) => localDate(event).startsWith(`${month}-`));
   const nextEvent = events.find((event) => Date.parse(event.ends_at) > now);
   const selectedDateLabel = Temporal.PlainDate.from(selectedDate).toLocaleString('en', { weekday: 'long', month: 'long', day: 'numeric' });
@@ -223,8 +241,9 @@ export function CalendarPage() {
             if (!day) return <div className="calendar-cell calendar-cell--empty" key={`empty-${index}`} role="gridcell" />;
             const value = Temporal.PlainDate.from({ year: monthValue.year, month: monthValue.month, day }).toString();
             const hasEvents = Boolean(eventsByDate.get(value)?.length);
-            return <button className={`calendar-cell${value === selectedDate ? ' is-selected' : ''}${value === today ? ' is-today' : ''}`} type="button" role="gridcell" key={value} aria-selected={value === selectedDate} aria-label={`${value}${hasEvents ? ', has events' : ''}`} onClick={() => { setSelectedDate(value); setShowForm(false); setEditingEvent(null); }}>
-              <span>{day}</span>{hasEvents ? <i aria-hidden="true" /> : <i className="calendar-dot-placeholder" aria-hidden="true" />}
+            const hasDue = dueDates.has(value);
+            return <button className={`calendar-cell${value === selectedDate ? ' is-selected' : ''}${value === today ? ' is-today' : ''}`} type="button" role="gridcell" key={value} aria-selected={value === selectedDate} aria-label={`${value}${hasEvents ? ', has events' : ''}${hasDue ? ', has something due' : ''}`} onClick={() => { setSelectedDate(value); setShowForm(false); setEditingEvent(null); }}>
+              <span>{day}</span>{hasEvents ? <i aria-hidden="true" /> : hasDue ? <i className="calendar-due-dot" aria-hidden="true" /> : <i className="calendar-dot-placeholder" aria-hidden="true" />}
             </button>;
           })}
         </div>
@@ -232,8 +251,15 @@ export function CalendarPage() {
         <section className="calendar-agenda" aria-labelledby="selected-date-heading">
           <div className="calendar-agenda-heading"><div><h3 id="selected-date-heading">{selectedDateLabel}</h3><p>Selected date</p></div><span className="calendar-event-count">{selectedEvents.length} {selectedEvents.length === 1 ? 'event' : 'events'}</span></div>
           {loading ? <p className="muted-copy">Loading calendar…</p> : null}
-          {!loading && !error && !selectedEvents.length && !showForm ? <p className="calendar-empty">No events on this day yet.</p> : null}
+          {!loading && !error && !selectedEvents.length && !selectedTasks.length && !selectedPayments.length && !showForm ? <p className="calendar-empty">No events on this day yet.</p> : null}
           <div className="calendar-agenda-list">{selectedEvents.map((event) => <EventCard key={event.id} event={event} canEdit={event.owner_household_id === profile?.household_id} onEdit={() => beginEdit(event)} />)}</div>
+          {selectedTasks.length || selectedPayments.length ? <div className="calendar-due" aria-label="Due on this day">
+            <h4>Due on this day</h4>
+            <ul>
+              {selectedTasks.map((task) => <li key={task.id} className={task.is_completed ? 'is-complete' : ''}><span className="calendar-due__kind">{task.is_completed ? 'Task done' : 'Task'}</span><strong>{task.item_text}</strong>{task.lists?.title ? <small>{task.lists.title}</small> : null}</li>)}
+              {selectedPayments.map((payment) => <li key={payment.id}><span className="calendar-due__kind">Payment due</span><strong>{payment.description_en}</strong><small>{formatPaise(Number(payment.amount_paise))} · Farm Kharchu</small></li>)}
+            </ul>
+          </div> : null}
           {showForm ? <form className="calendar-form calendar-form--open" onSubmit={(event) => void addEvent(event)}>
             <h4>Add an event</h4>
             <label className="field-label" htmlFor="event-title">What is happening?</label>

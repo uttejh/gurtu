@@ -43,6 +43,21 @@ export function findCalendarRange(question: string, today: string): CalendarRang
     startDate: formatDate(start), endDate: formatDate(end), label: { en, te },
   });
 
+  if (/\blast year\b|\bprevious year\b|పోయిన\s*(?:సంవత్సరం|ఏడాది)|గత\s*(?:సంవత్సరం|ఏడాది)/u.test(text)) {
+    const year = day.getUTCFullYear() - 1;
+    return range(new Date(Date.UTC(year, 0, 1)), new Date(Date.UTC(year + 1, 0, 1)), 'last year', 'పోయిన సంవత్సరం');
+  }
+  if (/\b(?:this|current) year\b|ఈ\s*(?:సంవత్సరం|ఏడాది)|ee\s+samvatsaram/u.test(text)) {
+    const year = day.getUTCFullYear();
+    return range(new Date(Date.UTC(year, 0, 1)), new Date(Date.UTC(year + 1, 0, 1)), 'this year', 'ఈ సంవత్సరం');
+  }
+  if (/\blast month\b|\bprevious month\b|పోయిన\s*నెల|గత\s*నెల|poyina\s+nela/u.test(text)) {
+    return range(monthStart(day, -1), monthStart(day, 0), 'last month', 'పోయిన నెల');
+  }
+  if (/\blast week\b|\bprevious week\b|పోయిన\s*వారం|గత\s*వారం|poyina\s+vaaram/u.test(text)) {
+    const start = addDays(weekStart(day), -7);
+    return range(start, addDays(start, 7), 'last week', 'పోయిన వారం');
+  }
   if (/\bnext month\b|వచ్చే\s*నెల|తర్వాతి\s*నెల|vache\s+nela/u.test(text)) {
     return range(monthStart(day, 1), monthStart(day, 2), 'next month', 'వచ్చే నెల');
   }

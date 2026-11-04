@@ -199,6 +199,7 @@ export function TalkPage() {
               <p>{message.content}</p>
               {message.result_type === 'event' && message.result_id ? <Link className="quiet-link" to={`/calendar?edit=${encodeURIComponent(message.result_id)}`}>Edit event</Link> : null}
               {message.result_type === 'list' && message.result_id ? <Link className="quiet-link" to="/lists">View lists</Link> : null}
+              {message.result_type === 'ledger' ? <Link className="quiet-link" to="/farm-kharchu">View in Farm Kharchu</Link> : null}
               {message.sources?.length ? <div className="talk-sources"><span>From what your family saved</span>{message.sources.map((source) => <blockquote key={source.id}><p>{source.original_text}</p><time>{new Intl.DateTimeFormat('en', { dateStyle: 'medium' }).format(new Date(source.created_at))}</time></blockquote>)}</div> : null}
               {isOpenConfirmation(message, messages) ? <div className="form-actions"><button type="button" className="button button--primary" onClick={() => void answerConfirmation(message, 'confirm')} disabled={busy}>Yes, proceed</button><button type="button" className="button button--secondary" onClick={() => void answerConfirmation(message, 'cancel')} disabled={busy}>Keep it</button></div> : null}
             </article>

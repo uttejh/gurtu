@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { CalendarBlank, ChatCircle, ChatsCircle, ClockCounterClockwise, ListBullets, NotePencil, Plus } from '@phosphor-icons/react';
+import { CalendarBlank, ChatCircle, ChatsCircle, ClockCounterClockwise, Coins, ListBullets, NotePencil, Plus } from '@phosphor-icons/react';
 import { Link } from 'react-router-dom';
 import { LogoutButton } from '../../components/LogoutButton';
 import { Brand } from '../../components/Brand';
@@ -177,6 +177,7 @@ export function HomePage({ preview = false }: { preview?: boolean }) {
 
       <nav className="secondary-nav" aria-label="More family memories">
         <Link to="/lists"><ListBullets aria-hidden="true" /> <span>Our lists</span></Link>
+        <Link to="/farm-kharchu"><Coins aria-hidden="true" /> <span>Farm Kharchu</span></Link>
         <Link to="/memories"><NotePencil aria-hidden="true" /> <span>Memories</span></Link>
         <Link to="/history"><ClockCounterClockwise aria-hidden="true" /> <span>History</span></Link>
         <Link to="/chats"><ChatsCircle aria-hidden="true" /> <span>All chats</span></Link>

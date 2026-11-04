@@ -33,6 +33,11 @@ All migrations live under `supabase/migrations/`. Every table below has RLS enab
 | `family_memories` | Household recall: English interpretation, embedding (`vector(1536)`), type, status, superseded link, people, occurrence dates and precision, who shared it, and source references. Saved-memory rows keep the original words; chat-derived rows keep only source message IDs. | Readable by the owning household only, including by the administrator. Written only by the indexing RPCs. |
 | `memory_index_jobs` | Durable queue of summary and recall indexing work, with attempts and safe error text. | No direct API access. Each login claims and completes only its own jobs through RPCs. |
 | `household_vocabulary` | Alias → canonical term per household, with normalised keys, script, entity type, optional family person link, status (suggested, confirmed, rejected) and the distinct source messages that suggested it. | Readable by the owning household only, including by the administrator. Written only by `teach_gurtu_vocabulary` and the indexing RPC. |
+| `ledger_entries` | Farm Kharchu entries: nature, direction, status (actual, planned, estimate), integer `amount_paise`, description, original words, occurrence range with precision, due date, party, category, quantity and unit, links to task, event, handover or the planned payment it fulfils, source message, request ID, void marker. | Household only. Written only by `apply_gurtu_family_plan`. |
+| `ledger_allocations` | What part of a cash handover was used for (farm or household purchase, personal, wage advance applied, other). Not a cash movement. | Household only. A deferred trigger keeps allocations plus returns within the handover. |
+| `ledger_parties`, `ledger_categories` | Workers, drivers, mechanics, suppliers, banks, landlords and buyers; user-created categories. Unique by normalised name. | Household only. |
+| `ledger_entry_history` | Previous and new values for every correction or undo, with actor, time, reason and source message. | Household only. |
+| `family_plan_runs` | One result per login and request ID, so a retried message never applies twice. | No direct access. |
 
 ## Important relationships and indexes
 
@@ -58,3 +63,6 @@ All migrations live under `supabase/migrations/`. Every table below has RLS enab
 - `admin_correct_capture_people` updates a tagged association and audits the old/new values. `admin_correct_capture_location` preserves old history and appends a corrected location.
 
 The pgTAP household tests in `supabase/tests/rls_household_isolation.test.sql` use five synthetic Auth identities across three households. They verify household isolation, the AAL2 administrator boundary, record and association visibility, failed capture review, retry idempotency, correction auditing, no audio/credential columns, and attempts to self-assign an administrator role.
+
+
+`list_items` also has `due_on` and `completed_at` (set by trigger); `events` has `related_list_item_id`.

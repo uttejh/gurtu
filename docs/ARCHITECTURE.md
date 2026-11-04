@@ -79,6 +79,24 @@ Confirmed vocabulary is used, in small relevant subsets only:
 
 There is no separate vocabulary screen; it works behind the existing chat.
 
+## Farm Kharchu and connected tasks
+
+Money is recorded by talking to Gurtu. A message that moves money, plans work or corrects an entry becomes one `family_plan` action with an ordered list of operations: `create_task`, `complete_task`, `create_event`, `ledger_entry`, `allocation`, `correct_entry`, `void_entry`.
+
+1. Before interpreting, `capture.ts` loads short numbered lists: open tasks, cash handed over and not yet accounted for, planned payments and estimates, and recent entries. The model points at existing records only by those numbers, and links new operations with refs such as `t1` or `h1`.
+2. `plan.ts` resolves numbers to real IDs and amounts to integer paise. It validates dates; a message with no date gets the household-local receipt date, and an approximate range is kept as a range. Planned payments keep a due date. It checks that allocations plus returned cash fit the money handed over, and turns anything unclear into one question in the user's language. Undo and likely duplicate payments are confirmed first (Yes, proceed / Keep it). It writes the deterministic reply.
+3. `apply_gurtu_family_plan` applies every operation in one transaction, once per request ID (`family_plan_runs`), re-checking each record against the caller's household. A deferred constraint trigger enforces that allocations plus returns never exceed a handover.
+
+Ledger rules (`ledger_entries`):
+- Every entry has a nature (income, operating expense, personal payment, loan received, loan principal repayment, interest, cash handover, cash returned, adjustment), a direction derived from it, and a status (actual, planned, estimate).
+- People and businesses are `ledger_parties`, resolved through confirmed vocabulary aliases. Categories are created as used.
+- A handover is one money-out row. `ledger_allocations` classify what it was spent on and are not extra cash; money given back is a `cash_returned` row.
+- Corrections and undo keep the previous values in `ledger_entry_history`; undo is refused while dependent records exist.
+
+`get_gurtu_ledger_report` calculates every total in SQL, counting only actual, non-voided rows. It separates cash flow from income and expenses, keeps loans and principal apart, and lists open handovers and planned payments. An approximate range that crosses the period edge is reported as uncertain, not counted. Money questions in chat receive these totals and matching entries as evidence, and the answer step is told not to recompute them.
+
+Tasks are list items with optional `due_on` and `completed_at`; events and ledger rows can link to a task. The Calendar page shows due tasks and payments due from their own records, never as copied events. The Farm Kharchu page (`/farm-kharchu`) shows totals for this month, last month, this year or all time, what is still to settle, spending by category and person, and the entries.
+
 ## Time and events
 
 Events store UTC `starts_at` and `ends_at` plus the target household's IANA time zone. Local wall times are converted with Temporal's `disambiguation: reject`, so nonexistent or repeated daylight-saving times need a correction. All-day events use local midnight through the next local midnight.

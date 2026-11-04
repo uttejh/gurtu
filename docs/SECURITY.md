@@ -52,3 +52,7 @@ Family members are told in the chat screen that useful facts from their chats, b
 ## Household vocabulary
 
 Vocabulary is household-scoped by RLS with no cross-household administrator policy. Clients cannot write it directly. A person entry can link only to an active person in the caller's family. Spellings proposed by the model must appear word for word in the family member's own message, are capped per step, and never override a rejected pair or an existing confirmed meaning. Person identities are linked only by an explicit statement.
+
+## Farm Kharchu
+
+Ledger tables are household-scoped by RLS with no cross-household administrator policy; clients cannot write them directly. `apply_gurtu_family_plan` derives the household from the caller's profile and re-checks every task, event, handover, planned payment and entry ID against it. The model never supplies an ID: it can only point at numbered records the server listed for that household. Amounts are integer paise; totals are computed in SQL.

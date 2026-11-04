@@ -32,4 +32,10 @@ describe('calendar period questions', () => {
   it('returns no range when no period is named', () => {
     expect(findCalendarRange('when is the bank appointment?', '2026-11-03')).toBeNull();
   });
+  it('handles last week, last month, this year and last year for money questions', () => {
+    expect(findCalendarRange('how much did we spend last month', '2026-01-15')).toMatchObject({ startDate: '2025-12-01', endDate: '2026-01-01' });
+    expect(findCalendarRange('total this year', '2026-11-05')).toMatchObject({ startDate: '2026-01-01', endDate: '2027-01-01' });
+    expect(findCalendarRange('పోయిన సంవత్సరం ఖర్చు', '2026-11-05')).toMatchObject({ startDate: '2025-01-01', endDate: '2026-01-01' });
+    expect(findCalendarRange('last week labour', '2026-11-05')).toMatchObject({ startDate: '2026-10-26', endDate: '2026-11-02' });
+  });
 });

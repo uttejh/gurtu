@@ -1,6 +1,6 @@
 import { supabase } from './supabase';
 
-export type TalkResultType = 'memory' | 'list' | 'event' | 'answer';
+export type TalkResultType = 'memory' | 'list' | 'event' | 'answer' | 'ledger';
 
 export interface TalkSource {
   id: string;

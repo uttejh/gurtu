@@ -85,7 +85,8 @@ export function replaceVocabularyQuestion(input: string, alias: string, currentM
     : `“${alias}” currently means ${currentMeaning}. Should it mean ${newMeaning} from now on?`;
 }
 
-export function confirmedMessage(telugu: boolean, target: 'event' | 'list' | 'vocabulary', serverMessage: string | undefined): string {
+export function confirmedMessage(telugu: boolean, target: 'event' | 'list' | 'vocabulary' | 'plan', serverMessage: string | undefined): string {
+  if (target === 'plan') return serverMessage || (telugu ? 'సరే — నమోదు చేశాను.' : 'Done.');
   if (target === 'vocabulary') return telugu ? 'సరే — గుర్తుంచుకుంటాను.' : serverMessage || 'I will remember that.';
   if (target === 'event') return telugu ? 'సరే — ఈవెంట్‌ను క్యాలెండర్ నుంచి తొలగించాను.' : serverMessage || 'The event was deleted from your calendar.';
   return telugu ? 'సరే — ఆ అంశాన్ని జాబితా నుంచి తీసివేశాను.' : serverMessage || 'The list was updated.';

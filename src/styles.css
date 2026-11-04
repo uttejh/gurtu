@@ -781,3 +781,40 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .home-chat-action { min-height: 80px; font-size: 22px; }
   .chat-row__title { font-size: 18px; }
 }
+
+/* Farm Kharchu */
+.kharchu-periods { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 20px; }
+.kharchu-period { min-height: 48px; padding: 8px 16px; border: 1px solid #4b4b4b; border-radius: 999px; background: #000; color: var(--primary); font-size: 18px; }
+.kharchu-period.is-selected { border-color: #ffffff; background: #ffffff; color: #000000; font-weight: 650; }
+.kharchu-totals { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.kharchu-totals > div { display: grid; gap: 6px; padding: 14px 16px; border: 1px solid #2a2a2a; border-radius: 14px; background: #111111; }
+.kharchu-totals span { color: var(--secondary); font-size: 16px; }
+.kharchu-totals strong { font-size: 24px; font-weight: 650; overflow-wrap: anywhere; }
+.kharchu-note { margin: 12px 0; color: var(--muted); font-size: 15px; line-height: 1.45; }
+.kharchu-breakdown { display: grid; gap: 0; margin: 0 0 18px; }
+.kharchu-breakdown > div { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid #1f1f1f; font-size: 18px; }
+.kharchu-breakdown dt { color: var(--secondary); }
+.kharchu-breakdown dd { margin: 0; font-weight: 600; }
+.kharchu-heading { margin: 26px 0 10px; font-size: 22px; font-weight: 650; }
+.kharchu-list, .kharchu-entries, .kharchu-bars { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.kharchu-list li, .kharchu-entries li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border: 1px solid #2a2a2a; border-radius: 12px; background: #111111; }
+.kharchu-list li > div, .kharchu-entries li > div { display: grid; flex: 1 1 auto; min-width: 0; gap: 4px; }
+.kharchu-list strong, .kharchu-entries strong { font-size: 18px; font-weight: 600; overflow-wrap: anywhere; }
+.kharchu-list span, .kharchu-entries span { color: var(--secondary); font-size: 15px; }
+.kharchu-list b, .kharchu-entries b { flex: 0 0 auto; font-size: 18px; text-align: right; }
+.kharchu-bars li { display: grid; grid-template-columns: minmax(90px, 30%) 1fr auto; align-items: center; gap: 10px; font-size: 17px; }
+.kharchu-bars i { display: block; height: 12px; border-radius: 6px; background: #d9d9d9; }
+.kharchu-bars span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 560px) {
+  .kharchu-totals { grid-template-columns: minmax(0, 1fr); }
+  .kharchu-list li, .kharchu-entries li { align-items: flex-start; }
+}
+.calendar-cell i.calendar-due-dot { box-sizing: border-box; border: 2px solid #d9d9d9; background: transparent; }
+.calendar-due { margin-top: 14px; }
+.calendar-due h4 { margin: 0 0 8px; color: var(--secondary); font-size: 18px; font-weight: 600; }
+.calendar-due ul { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.calendar-due li { display: grid; gap: 3px; padding: 12px 14px; border: 1px dashed #4b4b4b; border-radius: 12px; }
+.calendar-due li.is-complete strong { text-decoration: line-through; color: var(--secondary); }
+.calendar-due__kind { color: var(--muted); font-size: 14px; text-transform: uppercase; letter-spacing: .04em; }
+.calendar-due strong { font-size: 19px; font-weight: 600; }
+.calendar-due small, .list-item__due { color: var(--secondary); font-size: 15px; }

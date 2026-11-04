@@ -18,6 +18,9 @@ const ACTION_LABELS: Record<string, string> = {
   event_created: 'Calendar event added',
   event_updated: 'Calendar event updated',
   event_deleted: 'Calendar event deleted',
+  ledger_recorded: 'Money recorded in Farm Kharchu',
+  ledger_corrected: 'Farm Kharchu entry corrected',
+  ledger_voided: 'Farm Kharchu entry undone',
 };
 
 function formatDate(timestamp: string): string {
