@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isQuestion } from '../../src/lib/intent';
+import { isQuestion } from '../../supabase/functions/_shared/intent';
 
 describe('question detection', () => {
   it.each([

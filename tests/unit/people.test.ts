@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { findPeopleMentioned, normalizeAlias } from '../../src/lib/people';
+import { findPeopleMentioned, normalizeAlias } from '../../supabase/functions/_shared/people';
 
 const people = [
   { id: 'mom', displayName: 'Mom', aliases: ['Mom', 'Amma', 'అమ్మ'] },

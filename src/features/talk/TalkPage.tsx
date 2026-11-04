@@ -1,343 +1,217 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { Link } from 'react-router-dom';
-import { PaperPlaneRight } from '@phosphor-icons/react';
-import { Temporal } from '@js-temporal/polyfill';
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import { PaperPlaneRight, Plus } from '@phosphor-icons/react';
 import { PageLayout } from '../../components/PageLayout';
 import { VoiceRecorder } from '../../components/VoiceRecorder';
 import { StatusMessage } from '../../components/StatusMessage';
-import { useAuth } from '../../app/useAuth';
-import { useFamilyPeople } from '../shared/useFamilyPeople';
-import { ActionProposalSchema, type ActionProposal } from '../../lib/actions';
-import { findPeopleMentioned, type PersonIdentity } from '../../lib/people';
-import { friendlyFunctionError } from '../../lib/errors';
-import { isQuestion } from '../../lib/intent';
 import { supabase } from '../../lib/supabase';
+import {
+  isOpenConfirmation, MESSAGE_COLUMNS, processMessage, sortMessages, TalkRequestError, unansweredMessage,
+  type ConversationSummary, type ProcessResult, type TalkMessage,
+} from '../../lib/talk';
 
-interface TalkMessage {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  result_type?: 'memory' | 'list' | 'event' | 'answer' | null;
-  result_id?: string | null;
-  sources?: Array<{ id: string; original_text: string; created_at: string; kind?: string }>;
-  created_at?: string;
-}
-
-interface ConversationTurn {
-  role: 'user' | 'assistant';
-  content: string;
-}
-
-interface PendingConfirmation {
-  requestId: string;
-  personIds: string[];
-  input: string;
-  originalInput: string;
+interface SendPayload {
+  conversationId: string | null;
+  clientMessageId: string;
+  text: string;
   inputType: 'text' | 'voice';
-  confirmationMessage: string;
+  originalText: string | null;
 }
 
-interface RetryRequest {
-  requestId: string;
-  input: string;
-  originalInput: string;
-  inputType: 'text' | 'voice';
-  personIds: string[];
-  mode: 'ask' | 'action';
-  phase: 'ask' | 'interpret' | 'execute';
-  successContent?: string;
-  conversationContext?: ConversationTurn[];
+const SEND_FALLBACK = 'Gurtu could not finish that. Your words are saved. Please try again.';
+
+function pendingId(clientMessageId: string) {
+  return `pending-${clientMessageId}`;
 }
 
-function eventDate(value: string): string {
-  return Temporal.PlainDate.from(value).toLocaleString('en', { dateStyle: 'long' });
-}
-
-function eventZoneLabel(zone: string): string {
-  if (zone === 'Asia/Kolkata') return 'India time';
-  if (zone === 'America/Toronto') return 'Toronto time';
-  return new Intl.DateTimeFormat('en', { timeZone: zone, timeZoneName: 'shortGeneric' }).formatToParts(new Date()).find((part) => part.type === 'timeZoneName')?.value ?? zone;
-}
-
-function successMessage(input: string, proposal: ActionProposal): string | undefined {
-  const isTelugu = /[\u0C00-\u0C7F]/u.test(input);
-  if (proposal.action === 'create_event') {
-    const date = isTelugu
-      ? Temporal.PlainDate.from(proposal.local_date).toLocaleString('te-IN', { dateStyle: 'long' })
-      : eventDate(proposal.local_date);
-    if (isTelugu) {
-      const time = proposal.all_day ? '' : `, ${proposal.local_time}`;
-      return `సరే — ${date}న ${proposal.title} ఈవెంట్‌ను కుటుంబ క్యాలెండర్‌లో చేర్చాను${time}.`;
-    }
-    const time = proposal.all_day ? '' : ` at ${proposal.local_time} ${eventZoneLabel(proposal.time_zone)}`;
-    return `Got it — ${proposal.title} is on ${date}${time}, and I added it to the family calendar.`;
-  }
-  if (!isTelugu) return undefined;
-  switch (proposal.action) {
-    case 'save_memory': return 'సరే — దీన్ని మీ కుటుంబ జ్ఞాపకాల్లో భద్రపరిచాను.';
-    case 'save_item_location': return `${proposal.item_name} చివరిగా ${proposal.location}లో ఉందని గుర్తుంచుకున్నాను.`;
-    case 'create_list': return `సరే — “${proposal.title}” జాబితాను సృష్టించాను.`;
-    case 'add_list_items': return `సరే — ${proposal.list_title} జాబితాకు చేర్చాను.`;
-    case 'update_list_item': return `సరే — ${proposal.list_title} జాబితాను నవీకరించాను.`;
-    case 'remove_list_item': return undefined;
-    case 'update_event': return `సరే — ${proposal.event_title} ఈవెంట్‌ను నవీకరించాను.`;
-    case 'delete_event': return `సరే — ${proposal.event_title} ఈవెంట్‌ను క్యాలెండర్ నుంచి తొలగించాను.`;
-    case 'clarify': return undefined;
-  }
-}
-
-function removalQuestion(input: string, item: string, list: string): string {
-  return /[\u0C00-\u0C7F]/u.test(input)
-    ? `“${item}”ను ${list} జాబితా నుంచి తీసివేయాలా?`
-    : `Would you like me to remove “${item}” from ${list}?`;
-}
-
-function deleteEventQuestion(input: string, title: string, date: string | null): string {
-  const when = date ? ` (${eventDate(date)})` : '';
-  return /[\u0C00-\u0C7F]/u.test(input)
-    ? `“${title}”${when} ఈవెంట్‌ను క్యాలెండర్ నుంచి తొలగించాలా?`
-    : `Should I delete “${title}”${when} from your calendar?`;
+function payloadFor(message: TalkMessage): SendPayload {
+  return {
+    conversationId: message.conversation_id,
+    clientMessageId: message.client_message_id ?? message.id,
+    text: message.content,
+    inputType: message.input_type ?? 'text',
+    originalText: typeof message.metadata?.original_text === 'string' ? message.metadata.original_text : null,
+  };
 }
 
 export function TalkPage() {
-  const { session } = useAuth();
-  const { people } = useFamilyPeople();
+  const { conversationId } = useParams<{ conversationId?: string }>();
+  const navigate = useNavigate();
+  const [conversation, setConversation] = useState<ConversationSummary | null>(null);
   const [messages, setMessages] = useState<TalkMessage[]>([]);
+  const [loading, setLoading] = useState(Boolean(conversationId && supabase));
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [text, setText] = useState('');
-  const [inputType, setInputType] = useState<'text' | 'voice'>('text');
-  const [voiceOriginalText, setVoiceOriginalText] = useState('');
-  const [voiceRequestId, setVoiceRequestId] = useState<string | null>(null);
+  const [voice, setVoice] = useState<{ requestId: string; transcript: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [historyLoading, setHistoryLoading] = useState(Boolean(supabase));
-  const [pending, setPending] = useState<PendingConfirmation | null>(null);
-  const [retryRequest, setRetryRequest] = useState<RetryRequest | null>(null);
+  const [failedSend, setFailedSend] = useState<SendPayload | null>(null);
+  const loadedConversationRef = useRef<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
-  const messageWritesRef = useRef<Promise<void>>(Promise.resolve());
 
+  // Load the chat named in the address, unless this page just created it.
   useEffect(() => {
-    if (!supabase || !session?.user.id) {
-      setHistoryLoading(false);
+    if (!conversationId) {
+      if (loadedConversationRef.current !== null) {
+        loadedConversationRef.current = null;
+        setConversation(null);
+        setMessages([]);
+        setError(null);
+        setFailedSend(null);
+      }
+      setLoading(false);
+      setLoadError(null);
       return;
     }
+    if (loadedConversationRef.current === conversationId || !supabase) return;
+    const client = supabase;
     let active = true;
-    void supabase.from('talk_messages').select('id,role,content,result_type,result_id,sources,created_at')
-      .eq('user_id', session.user.id).order('created_at', { ascending: false }).limit(100)
-      .then(({ data, error: queryError }) => {
-        if (!active) return;
-        if (queryError) setError('We could not load your conversation. Please refresh and try again.');
-        else {
-          const recent = ((data ?? []) as TalkMessage[]).reverse();
-          setMessages((current) => {
-            const persistedIds = new Set(recent.map((message) => message.id));
-            return [...recent, ...current.filter((message) => !persistedIds.has(message.id))];
-          });
-        }
-        setHistoryLoading(false);
-      });
+    setLoading(true);
+    setLoadError(null);
+    setError(null);
+    setFailedSend(null);
+    setConversation(null);
+    setMessages([]);
+    void Promise.all([
+      client.from('conversations').select('id,title,last_activity_at').eq('id', conversationId).maybeSingle(),
+      client.from('talk_messages').select(MESSAGE_COLUMNS).eq('conversation_id', conversationId)
+        .order('created_at', { ascending: false }).limit(200),
+    ]).then(([conversationResult, messageResult]) => {
+      if (!active) return;
+      if (conversationResult.error || messageResult.error) {
+        setLoadError('We could not load this chat. Please refresh and try again.');
+      } else if (!conversationResult.data) {
+        setLoadError('This chat could not be found. Start a new chat instead.');
+      } else {
+        loadedConversationRef.current = conversationId;
+        setConversation(conversationResult.data as ConversationSummary);
+        setMessages(sortMessages((messageResult.data ?? []) as unknown as TalkMessage[]));
+      }
+      setLoading(false);
+    });
     return () => { active = false; };
-  }, [session?.user.id]);
+  }, [conversationId]);
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }); }, [messages, busy]);
 
-  function saveMessage(message: Omit<TalkMessage, 'id'>): TalkMessage {
-    const optimistic: TalkMessage = { ...message, id: crypto.randomUUID(), created_at: new Date().toISOString() };
-    setMessages((current) => [...current, optimistic]);
-    if (!supabase || !session?.user.id) return optimistic;
-
-    const client = supabase;
-    const userId = session.user.id;
-    const write = messageWritesRef.current.then(async () => {
-      const { error: saveError } = await client.from('talk_messages').insert({
-        id: optimistic.id,
-        user_id: userId,
-        role: optimistic.role,
-        content: optimistic.content,
-        result_type: optimistic.result_type ?? null,
-        result_id: optimistic.result_id ?? null,
-        sources: optimistic.sources ?? [],
-      });
-      if (saveError) throw saveError;
-    });
-    messageWritesRef.current = write.catch(() => {
-      setError('This conversation could not be saved. Your family records are still private and unchanged.');
-    });
-    return optimistic;
-  }
-
-  function identities(): PersonIdentity[] {
-    return people.map((person) => ({ id: person.id, displayName: person.display_name, aliases: person.aliases }));
-  }
-
-  async function executeAction(requestId: string, personIds: string[], successContent?: string) {
-    if (!supabase) throw new Error('Gurtu is not connected yet.');
-    const { data: result, error: executeError } = await supabase.functions.invoke('process-memory-input', {
-      body: { mode: 'execute', request_id: requestId, person_ids: personIds, confirmed: true },
-    });
-    if (executeError || result?.ok !== true) throw executeError ?? new Error('That change could not be saved. Please try again.');
-    const resultType = result.result_entity_type === 'event' ? 'event' : result.result_entity_type === 'list' ? 'list' : 'memory';
-    saveMessage({ role: 'assistant', content: successContent || result.message || 'Saved to your family memory.', result_type: resultType, result_id: result.result_entity_id });
-    setPending(null);
-    setRetryRequest(null);
-  }
-
-  async function runAction(
-    input: string,
-    requestId: string,
-    originalInput = input,
-    sourceType: 'text' | 'voice' = inputType,
-    onPhase?: (phase: 'interpret' | 'execute', successContent?: string) => void,
-    conversationContext: ConversationTurn[] = [],
-  ) {
-    if (!supabase) throw new Error('Gurtu is not connected yet. Your message was not saved.');
-    const peopleMentioned = findPeopleMentioned(input, identities()).map((person) => person.id);
-    onPhase?.('interpret');
-    const { data, error: invokeError } = await supabase.functions.invoke('process-memory-input', {
-      body: { mode: 'interpret', input_type: sourceType, original_text: originalInput, corrected_text: input, request_id: requestId, conversation_context: conversationContext },
-    });
-    if (invokeError) throw invokeError;
-    const parsed = ActionProposalSchema.safeParse(data?.proposal);
-    if (!parsed.success) throw new Error('Gurtu could not prepare that action. Please try saying it another way.');
-    const proposal = parsed.data;
-    if (proposal.action === 'clarify') {
-      saveMessage({ role: 'assistant', content: proposal.question });
-      return;
+  const adoptConversation = useCallback((next: ConversationSummary) => {
+    setConversation(next);
+    if (loadedConversationRef.current !== next.id) {
+      loadedConversationRef.current = next.id;
+      navigate(`/talk/${next.id}`, { replace: true });
     }
-    if (proposal.action === 'remove_list_item' || proposal.action === 'delete_event') {
-      const confirmationMessage = proposal.action === 'remove_list_item'
-        ? removalQuestion(input, proposal.item_text, proposal.list_title)
-        : deleteEventQuestion(input, proposal.event_title, proposal.local_date);
-      setPending({ requestId, personIds: peopleMentioned, input, originalInput, inputType: sourceType, confirmationMessage });
-      saveMessage({ role: 'assistant', content: confirmationMessage });
-      return;
-    }
-    const successContent = successMessage(input, proposal);
-    onPhase?.('execute', successContent);
-    await executeAction(requestId, peopleMentioned, successContent);
+  }, [navigate]);
+
+  function applyResult(result: ProcessResult, replacing?: string) {
+    setMessages((current) => {
+      const incoming = [...(result.user_message ? [result.user_message] : []), result.reply];
+      const ids = new Set(incoming.map((message) => message.id));
+      return sortMessages([...current.filter((message) => message.id !== replacing && !ids.has(message.id)), ...incoming]);
+    });
+    adoptConversation(result.conversation);
   }
 
-  async function send(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const value = text.trim();
-    if (!value || busy) return;
-    if (!supabase || !session?.user.id) {
-      setError('Gurtu is not connected yet. Your message was not sent.');
-      return;
-    }
+  async function submit(payload: SendPayload) {
     setBusy(true);
     setError(null);
-    setRetryRequest(null);
-    setPending(null);
-    setText('');
-    const conversationContext = messages.slice(-12)
-      .map(({ role, content }) => ({ role, content: content.trim().slice(0, 500).trim() }))
-      .filter((turn) => turn.content.length > 0);
-    saveMessage({ role: 'user', content: value });
-    const requestId = inputType === 'voice' && voiceRequestId ? voiceRequestId : crypto.randomUUID();
-    let retryPhase: RetryRequest['phase'] = 'ask';
-    let retrySuccessContent: string | undefined;
-    const sourceType = inputType;
-    const originalInput = sourceType === 'voice' ? voiceOriginalText || value : value;
-    const peopleMentioned = findPeopleMentioned(value, identities()).map((person) => person.id);
     try {
-      if (isQuestion(value)) {
-        const { data, error: askError } = await supabase.functions.invoke('ask-memory', { body: { question: value, conversation_context: conversationContext } });
-        if (askError || typeof data?.answer !== 'string') throw askError ?? new Error('No answer was returned.');
-        saveMessage({
-          role: 'assistant', content: data.answer, result_type: 'answer',
-          sources: Array.isArray(data.sources) ? data.sources : [],
-        });
-      } else {
-        retryPhase = 'interpret';
-        await runAction(value, requestId, originalInput, sourceType, (phase, successContent) => { retryPhase = phase; retrySuccessContent = successContent; }, conversationContext);
-      }
-      setInputType('text');
-      setVoiceOriginalText('');
-      setVoiceRequestId(null);
-      setRetryRequest(null);
+      const result = await processMessage({
+        action: 'send',
+        conversation_id: payload.conversationId,
+        client_message_id: payload.clientMessageId,
+        text: payload.text,
+        input_type: payload.inputType,
+        original_text: payload.originalText,
+      }, SEND_FALLBACK);
+      applyResult(result, pendingId(payload.clientMessageId));
+      setFailedSend(null);
     } catch (cause) {
-      setRetryRequest({ requestId, input: value, originalInput, inputType: sourceType, personIds: peopleMentioned, mode: isQuestion(value) ? 'ask' : 'action', phase: retryPhase, successContent: retrySuccessContent, conversationContext });
-      setError(await friendlyFunctionError(cause, 'We could not complete that. Your original words are still in the conversation. Please try again.'));
+      const failure = cause instanceof TalkRequestError ? cause : new TalkRequestError(SEND_FALLBACK);
+      const savedIn = failure.conversationId ?? payload.conversationId;
+      if (failure.conversationId && !conversation) {
+        // The words were saved in a new chat even though Gurtu could not finish.
+        adoptConversation({ id: failure.conversationId, title: 'New chat', last_activity_at: new Date().toISOString() });
+        void supabase?.from('conversations').select('id,title,last_activity_at').eq('id', failure.conversationId).maybeSingle()
+          .then(({ data }) => { if (data) setConversation(data as ConversationSummary); });
+      }
+      setFailedSend({ ...payload, conversationId: savedIn });
+      setError(failure.message);
     } finally {
       setBusy(false);
     }
   }
 
-  async function retryFailedMessage() {
-    if (!retryRequest || !supabase || busy) return;
-    const request = retryRequest;
-    setBusy(true);
-    setError(null);
-    try {
-      if (request.mode === 'ask') {
-        const { data, error: askError } = await supabase.functions.invoke('ask-memory', { body: { question: request.input, conversation_context: request.conversationContext ?? [] } });
-        if (askError || typeof data?.answer !== 'string') throw askError ?? new Error('No answer was returned.');
-        saveMessage({ role: 'assistant', content: data.answer, result_type: 'answer', sources: Array.isArray(data.sources) ? data.sources : [] });
-      } else if (request.phase === 'execute') {
-        await executeAction(request.requestId, request.personIds, request.successContent);
-      } else {
-        await runAction(request.input, request.requestId, request.originalInput, request.inputType, (phase, successContent) => {
-          setRetryRequest({ ...request, phase, successContent });
-        }, request.conversationContext ?? []);
-      }
-      setRetryRequest(null);
-      setError(null);
-      setInputType('text');
-      setVoiceOriginalText('');
-      setVoiceRequestId(null);
-    } catch (cause) {
-      setError(await friendlyFunctionError(cause, 'The retry did not complete. Your original message is still here. Please try again.'));
-    } finally { setBusy(false); }
+  function send(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const value = text.trim();
+    if (!value || busy) return;
+    if (!supabase) {
+      setError('Gurtu is not connected yet. Your message was not sent.');
+      return;
+    }
+    const payload: SendPayload = {
+      conversationId: conversation?.id ?? null,
+      clientMessageId: voice?.requestId ?? crypto.randomUUID(),
+      text: value,
+      inputType: voice ? 'voice' : 'text',
+      originalText: voice?.transcript ?? null,
+    };
+    setMessages((current) => [...current, {
+      id: pendingId(payload.clientMessageId), conversation_id: conversation?.id ?? '', role: 'user', content: value,
+      result_type: null, result_id: null, sources: [], created_at: new Date().toISOString(),
+      client_message_id: payload.clientMessageId, reply_to_message_id: null, input_type: payload.inputType, metadata: {},
+    }]);
+    setText('');
+    setVoice(null);
+    void submit(payload);
   }
 
-  async function confirmRemoval() {
-    if (!pending || !supabase) return;
+  async function answerConfirmation(message: TalkMessage, action: 'confirm' | 'cancel') {
+    if (busy) return;
     setBusy(true);
     setError(null);
     try {
-      const { data, error: invokeError } = await supabase.functions.invoke('process-memory-input', {
-        body: { mode: 'execute', request_id: pending.requestId, person_ids: pending.personIds, confirmed: true },
-      });
-      if (invokeError || data?.ok !== true) throw invokeError ?? new Error('The item could not be removed.');
-      const isTelugu = /[\u0C00-\u0C7F]/u.test(pending.input);
-      const isEventDeletion = /calendar|క్యాలెండర్/u.test(pending.confirmationMessage);
-      const responseText = isEventDeletion
-        ? (isTelugu ? 'సరే — ఈవెంట్‌ను క్యాలెండర్ నుంచి తొలగించాను.' : data.message || 'The event was deleted from your calendar.')
-        : (isTelugu ? 'సరే — ఆ అంశాన్ని జాబితా నుంచి తీసివేశాను.' : data.message || 'The list was updated.');
-      saveMessage({ role: 'assistant', content: responseText, result_type: isEventDeletion ? 'event' : 'list', result_id: data.result_entity_id });
-      setPending(null);
-      setRetryRequest(null);
+      applyResult(await processMessage({ action, conversation_id: message.conversation_id, confirmation_message_id: message.id },
+        action === 'confirm' ? 'That change could not be saved. Please try again.' : 'Gurtu could not record that. Please try again.'));
     } catch (cause) {
-      setRetryRequest({ ...pending, mode: 'action', phase: 'execute' });
-      setError(await friendlyFunctionError(cause, 'That item could not be removed. Please try again.'));
-    } finally { setBusy(false); }
+      setError(cause instanceof Error ? cause.message : 'That change could not be saved. Please try again.');
+    } finally {
+      setBusy(false);
+    }
   }
+
+  const unanswered = unansweredMessage(messages);
+  const retryPayload = failedSend ?? (unanswered ? payloadFor(unanswered) : null);
+  const shownError = error ?? (unanswered && !busy ? 'Gurtu has not answered your last message yet.' : null);
+  const title = conversation?.title ?? 'New chat';
 
   return (
-    <PageLayout backTo="/">
+    <PageLayout backTo="/" headerAction={conversation ? <Link className="quiet-link talk-new-chat" to="/talk"><Plus aria-hidden="true" /> New chat</Link> : null}>
+      <h2 className="talk-title" title={title}>{title}</h2>
       <section className="talk-section" aria-label="Conversation with Gurtu">
-        <p className="talk-privacy-note">Your conversation is private to you. Anything you save becomes part of your family records.</p>
+        <p className="talk-privacy-note">This chat is private to your login. Anything you save becomes part of your family records.</p>
         <div className="talk-messages" aria-live="polite">
-          {historyLoading ? <p className="muted-copy">Loading your conversation…</p> : null}
-          {!historyLoading && messages.length === 0 ? <p className="talk-empty">Start by speaking or typing to Gurtu.</p> : null}
+          {loading ? <p className="muted-copy">Loading your chat…</p> : null}
+          {loadError ? <StatusMessage tone="error">{loadError}</StatusMessage> : null}
+          {!loading && !loadError && messages.length === 0 ? <p className="talk-empty">Start by speaking or typing to Gurtu.</p> : null}
           {messages.map((message) => (
             <article className={`talk-message talk-message--${message.role}`} key={message.id}>
               <p>{message.content}</p>
               {message.result_type === 'event' && message.result_id ? <Link className="quiet-link" to={`/calendar?edit=${encodeURIComponent(message.result_id)}`}>Edit event</Link> : null}
               {message.result_type === 'list' && message.result_id ? <Link className="quiet-link" to="/lists">View lists</Link> : null}
               {message.sources?.length ? <div className="talk-sources"><span>From what your family saved</span>{message.sources.map((source) => <blockquote key={source.id}><p>{source.original_text}</p><time>{new Intl.DateTimeFormat('en', { dateStyle: 'medium' }).format(new Date(source.created_at))}</time></blockquote>)}</div> : null}
-              {pending && message.role === 'assistant' && message.content === pending.confirmationMessage ? <div className="form-actions"><button type="button" className="button button--primary" onClick={() => void confirmRemoval()} disabled={busy}>Yes, proceed</button><button type="button" className="button button--secondary" onClick={() => setPending(null)} disabled={busy}>Keep it</button></div> : null}
+              {isOpenConfirmation(message, messages) ? <div className="form-actions"><button type="button" className="button button--primary" onClick={() => void answerConfirmation(message, 'confirm')} disabled={busy}>Yes, proceed</button><button type="button" className="button button--secondary" onClick={() => void answerConfirmation(message, 'cancel')} disabled={busy}>Keep it</button></div> : null}
             </article>
           ))}
           {busy ? <p className="talk-thinking">Gurtu is thinking…</p> : null}
           <div ref={endRef} />
         </div>
-        {error ? <div className="talk-error"><StatusMessage tone="error">{error}</StatusMessage>{retryRequest ? <button className="button button--secondary talk-retry" type="button" onClick={() => void retryFailedMessage()} disabled={busy}>{busy ? 'Trying again…' : 'Try again'}</button> : null}</div> : null}
-        <form className="talk-composer" onSubmit={(event) => void send(event)}>
-          <textarea className="text-area talk-input" aria-label="Message to Gurtu" rows={2} maxLength={8000} placeholder="Type in Telugu or English…" value={text} onChange={(event) => { setText(event.target.value); if (inputType !== 'voice') setInputType('text'); }} />
+        {shownError ? <div className="talk-error"><StatusMessage tone="error">{shownError}</StatusMessage>{retryPayload ? <button className="button button--secondary talk-retry" type="button" onClick={() => void submit(retryPayload)} disabled={busy}>{busy ? 'Trying again…' : 'Try again'}</button> : null}</div> : null}
+        <form className="talk-composer" onSubmit={send}>
+          <textarea className="text-area talk-input" aria-label="Message to Gurtu" rows={2} maxLength={8000} placeholder="Type in Telugu or English…" value={text} onChange={(event) => setText(event.target.value)} disabled={Boolean(loadError)} />
           <div className="talk-composer__actions">
-            <VoiceRecorder compact onTranscript={(transcript, requestId) => { setText(transcript); setVoiceOriginalText(transcript); setVoiceRequestId(requestId); setInputType('voice'); setError(null); }} />
-            <button className="button button--primary talk-send" type="submit" disabled={busy || !text.trim()}><PaperPlaneRight aria-hidden="true" /><span>Send</span></button>
+            <VoiceRecorder compact onTranscript={(transcript, requestId) => { setText(transcript); setVoice({ requestId, transcript }); setError(null); }} />
+            <button className="button button--primary talk-send" type="submit" disabled={busy || !text.trim() || Boolean(loadError)}><PaperPlaneRight aria-hidden="true" /><span>Send</span></button>
           </div>
         </form>
       </section>

@@ -35,7 +35,8 @@ export function corsIsAllowed(request: Request): boolean {
 }
 
 export class HttpError extends Error {
-  constructor(readonly status: number, message: string) {
+  /** `details` are safe, non-private fields added to the JSON error body. */
+  constructor(readonly status: number, message: string, readonly details: Record<string, unknown> = {}) {
     super(message);
   }
 }
@@ -115,7 +116,8 @@ export async function withRequest(
     console.info(JSON.stringify({ metric: 'edge_request', endpoint: new URL(request.url).pathname.split('/').at(-1), duration_ms: Math.round(performance.now() - startedAt), outcome: 'error' }));
     const status = error instanceof HttpError ? error.status : 500;
     const message = error instanceof HttpError ? error.message : 'We could not complete that request. Please try again.';
-    return corsResponse(request, status, { error: message });
+    const details = error instanceof HttpError ? error.details : {};
+    return corsResponse(request, status, { ...details, error: message });
   }
 }
 

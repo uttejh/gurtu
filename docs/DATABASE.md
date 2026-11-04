@@ -28,6 +28,8 @@ All migrations live under `supabase/migrations/`. Every table below has RLS enab
 | `capture_requests` | Original/corrected Remember text, validated interpretation, processing status, safe failure, and result ID. Audio is never stored. | Submitter can read their own capture. The global administrator can review family captures only at `aal2`. Writes use narrow RPCs. |
 | `admin_audit_log` | Administrative search/view, retry, and correction history with previous/new values and reason. | Readable by the global administrator at `aal2`; protected from direct client writes and deletes. |
 | `private.global_administrators` | Trusted server-controlled administrator identities. | Private schema; no direct client access. Provisioning assigns the role. |
+| `conversations` | One chat: owner login, household, automatic title, last activity time. | Owner login only. Created by `start_gurtu_message`; clients cannot edit it. |
+| `talk_messages` | Chat messages with server receipt time, per-login `client_message_id` (idempotency), `reply_to_message_id` (one reply per message), input type, language and metadata. | Owner login only. Saved by `start_gurtu_message` / `record_gurtu_reply`; a trigger checks ownership for direct inserts. |
 
 ## Important relationships and indexes
 

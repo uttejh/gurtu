@@ -1,4 +1,5 @@
 import { consumeLimit, HttpError, withRequest, type RequestContext } from '../_shared/http.ts';
+import { OPENAI_BASE_URL } from '../_shared/openai.ts';
 
 type PersonRow = { display_name: string; aliases: string[] };
 
@@ -62,7 +63,7 @@ async function handler(context: RequestContext, request: Request) {
   const names = ((people ?? []) as PersonRow[]).flatMap((person) => [person.display_name, ...(person.aliases ?? [])])
     .filter(Boolean).slice(0, 160).join(', ');
   const upstreamForm = new FormData();
-  let audioBytes: Uint8Array | null = null;
+  let audioBytes: Uint8Array<ArrayBuffer> | null = null;
   const transcriptionStartedAt = performance.now();
   try {
     audioBytes = new Uint8Array(await audio.arrayBuffer());
@@ -71,7 +72,7 @@ async function handler(context: RequestContext, request: Request) {
     upstreamForm.append('response_format', 'json');
     upstreamForm.append('prompt', `The speaker may use Telangana Telugu, English, or mix both naturally. Preserve Telugu script and the words as spoken. Family names and aliases: ${names}. Do not translate.`);
     try {
-      const upstream = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+      const upstream = await fetch(`${OPENAI_BASE_URL}/audio/transcriptions`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${apiKey}` },
         body: upstreamForm,

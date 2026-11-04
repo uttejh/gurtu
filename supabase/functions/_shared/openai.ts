@@ -1,6 +1,8 @@
 import { HttpError } from './http.ts';
 
-const OPENAI_URL = 'https://api.openai.com/v1/responses';
+// OPENAI_BASE_URL lets local tests point at a stub; production uses the default.
+export const OPENAI_BASE_URL = (Deno.env.get('OPENAI_BASE_URL') ?? 'https://api.openai.com/v1').replace(/\/+$/u, '');
+const OPENAI_URL = `${OPENAI_BASE_URL}/responses`;
 
 export async function openAIJson<T>(input: {
   model?: string;

@@ -2,7 +2,7 @@
 
 Gurtu is a private family memory notebook for three households. Family members can preserve Telugu, English, and mixed-language memories, remember where belongings were last reported, keep simple shared lists, manage appointments, and ask questions grounded in saved family records.
 
-The home screen follows the supplied reference: two large actions, events inside their 24-hour display window, and links to lists, memories, history, and the calendar. There is no public registration, social feed, notification system, or chat history.
+The home screen offers New chat and Continue chat, recent chats, events inside their 24-hour display window, and links to lists, memories, history, and the calendar. Each login keeps its own chats; parents share one login. There is no public registration, social feed, or notification system.
 
 ## Features
 
@@ -63,10 +63,11 @@ supabase link --project-ref YOUR_PROJECT_REF
 supabase db push
 ```
 
-Deploy the three user-authenticated functions:
+Deploy the user-authenticated functions (`process-message` is the chat entry point; `process-memory-input` and `ask-memory` stay for older app versions):
 
 ```sh
 supabase functions deploy transcribe-audio
+supabase functions deploy process-message
 supabase functions deploy process-memory-input
 supabase functions deploy ask-memory
 ```

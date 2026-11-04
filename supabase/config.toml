@@ -45,3 +45,6 @@ verify_jwt = true
 
 [functions.ask-memory]
 verify_jwt = true
+
+[functions.process-message]
+verify_jwt = true

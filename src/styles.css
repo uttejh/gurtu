@@ -496,7 +496,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .calendar-all-day { margin-top: 4px; }
 .calendar-zone-hint { margin: 0; }
 
-.talk-section { display: flex; height: min(72vh, 940px); min-height: 400px; flex-direction: column; margin-top: 16px; }
+.talk-section { display: flex; height: min(68vh, 900px); min-height: 400px; flex-direction: column; margin-top: 6px; }
 .talk-privacy-note { margin: -8px 0 4px; color: var(--muted); font-size: 14px; line-height: 1.4; }
 .talk-messages { display: flex; flex: 1; min-height: 0; flex-direction: column; gap: 16px; overflow-y: auto; overscroll-behavior: contain; padding: 12px 0 22px; }
 .talk-empty, .talk-thinking { margin: auto 0; color: var(--secondary); font-size: 20px; }
@@ -541,7 +541,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .calendar-agenda-card h3 { font-size: 20px; }
   .calendar-agenda-card p { font-size: 16px; }
   .calendar-add-button { min-height: 60px; font-size: 20px; }
-  .talk-section { height: calc(100dvh - 250px); min-height: 430px; }
+  .talk-section { height: calc(100dvh - 290px); min-height: 430px; }
   .talk-privacy-note { font-size: 13px; }
   .talk-messages { min-height: 0; }
   .talk-message { max-width: 94%; padding: 14px 16px; border-radius: 17px; }
@@ -728,4 +728,56 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
+}
+
+/* Chats: New chat / Continue chat, recent chats and the chat list. */
+.home-chat-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+.home-chat-action {
+  display: flex;
+  min-height: 88px;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 24px;
+  border: 2px solid #4b4b4b;
+  border-radius: 18px;
+  color: var(--primary);
+  font-size: 24px;
+  font-weight: 650;
+  line-height: 1.25;
+  text-decoration: none;
+}
+.home-chat-action svg { width: 30px; height: 30px; flex: 0 0 auto; }
+.home-chat-action span { display: grid; min-width: 0; gap: 4px; }
+.home-chat-action small { overflow: hidden; color: var(--secondary); font-size: 18px; font-weight: 450; text-overflow: ellipsis; white-space: nowrap; }
+.home-chat-action:hover, .home-chat-action:focus-visible { border-color: #ffffff; background: #0b0b0b; }
+.home-chat-action--primary { border-color: #ffffff; background: #ffffff; color: #000000; }
+.home-chat-action--primary:hover, .home-chat-action--primary:focus-visible { background: #e6e6e6; color: #000000; }
+.home-chat-hint { margin: 16px 0 0; color: var(--secondary); font-size: 19px; line-height: 1.45; }
+.recent-chats { margin-top: 30px; }
+.recent-chats__heading { margin-bottom: 10px; }
+.recent-chats__heading h3 { margin: 0; font-size: 24px; font-weight: 650; }
+.chat-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; margin: 0; padding: 0; list-style: none; }
+.chat-list li { min-width: 0; }
+.chat-row {
+  display: flex;
+  min-height: 60px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 18px;
+  border: 1px solid #2a2a2a;
+  border-radius: 14px;
+  background: #111111;
+  color: var(--primary);
+  text-decoration: none;
+}
+.chat-row:hover, .chat-row:focus-visible { border-color: #6b6b6b; }
+.chat-row__title { min-width: 0; overflow: hidden; font-size: 20px; text-overflow: ellipsis; white-space: nowrap; }
+.chat-row__time { flex: 0 0 auto; color: var(--muted); font-size: 16px; }
+.chat-new-button { display: inline-flex; align-items: center; gap: 10px; margin-bottom: 22px; text-decoration: none; }
+.talk-new-chat { display: inline-flex; align-items: center; gap: 6px; min-height: 48px; }
+.talk-title { margin: 6px 0 10px; overflow: hidden; font-size: 24px; font-weight: 650; line-height: 1.3; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 760px) {
+  .home-chat-action { min-height: 80px; font-size: 22px; }
+  .chat-row__title { font-size: 18px; }
 }

@@ -2,9 +2,9 @@
 
 ## Frontend
 
-The Vite app is a responsive, static React SPA. React Router protects the home, remember, ask, memories, history, lists, calendar, and Family Activity routes. Supabase Auth restores email/password sessions. Registration is intentionally absent. `AuthProvider` shares the session and checks the trusted administrator role for navigation.
+The Vite app is a responsive, static React SPA. React Router protects the home, talk (`/talk/:conversationId?`), chats, memories, history, lists, calendar, and Family Activity routes. Supabase Auth restores email/password sessions. Registration is intentionally absent. `AuthProvider` shares the session and checks the trusted administrator role for navigation.
 
-Feature pages remain small and use direct Supabase reads under the signed-in user's JWT. Writes that need cross-table work, idempotency, or audit history use Postgres RPC functions. `src/lib/actions.ts` validates action proposals in the browser as an additional UI check; the Edge Function validates again before it writes.
+Feature pages remain small and use direct Supabase reads under the signed-in user's JWT. Writes that need cross-table work, idempotency, or audit history use Postgres RPC functions. Chat messages are never written by the browser in the current app version; the `process-message` Edge Function saves them.
 
 ## Supabase
 
@@ -16,16 +16,29 @@ List and event sharing uses separate access tables. `list_household_access` only
 
 The trusted provisioner assigns the only `global_administrators` row to `chinna@gurtu.com`, while Chinna keeps a single profile in Household 2 with Ash. Global read policies check both that role and JWT assurance level `aal2`; the normal household policies remain in place for all other users and for Chinna before MFA. The browser uses the authenticated Supabase client. It never receives a service-role credential.
 
-## Remember and write flow
+## Conversations and the message pipeline
 
-1. The user types text or records a short clip.
-2. When audio is used, `transcribe-audio` creates a text-only capture request, checks a per-account rate limit, sends the in-memory audio to OpenAI `gpt-transcribe`, stores the returned original transcript, and returns editable text. The recording itself is never persisted.
-3. `process-memory-input` records typed input before interpretation, reads the signed-in family's identity directory, and asks OpenAI `gpt-6-luna` for a strict structured proposal.
-4. Zod validates the model output. The capture request stores the validated interpretation, original transcript, and any corrected text separately. The user reviews the action and people tags.
-5. After confirmation, the function reads the saved proposal from the user's capture, resolves selected IDs against the family directory, and calls a user-scoped database RPC. The RPC derives the household from the user's profile and rechecks the record permissions.
-6. The capture stores its status and resulting record ID. Failures retain safe error details. Request IDs make retries idempotent.
+Each login has any number of conversations (`conversations`, owner-only RLS). Parents share one login and therefore one set of chats. Every chat message is a `talk_messages` row with a `conversation_id`, the server receipt time (`created_at`, set by a trigger with `clock_timestamp()`), a per-login `client_message_id`, and, for assistant rows, `reply_to_message_id`. A partial unique index allows exactly one reply per message.
 
-The model never receives a database credential and never writes SQL. It cannot select a household ID or invent a person ID. A user must confirm before the family record is written.
+All chat traffic goes through one Edge Function, `process-message`:
+
+1. Validate the request with specific errors (empty, too long, unreadable).
+2. `start_gurtu_message` saves the user's words before any AI work. Repeating the same `client_message_id` returns the original row instead of saving a copy. A first message without a conversation creates one, titled from that message.
+3. If the message already has a reply, return it. A retry never acts twice.
+4. Load up to 12 earlier turns of this conversation from the database. Client-supplied history is not trusted.
+5. Questions (`_shared/intent.ts`) go to `_shared/ask.ts`. Other messages go to `_shared/capture.ts`: interpret once with OpenAI structured output, record the interpretation in `capture_requests`, then execute through the existing idempotent RPCs. If an earlier attempt of the same message was already interpreted or saved, it resumes from that record without another model call.
+6. Removals and event deletions reply with a confirmation question (`metadata.kind = 'confirm'`). "Yes, proceed" and "Keep it" are `confirm`/`cancel` requests that act on that saved question; `cancel_gurtu_capture` records the cancellation.
+7. `record_gurtu_reply` saves exactly one assistant reply. Success is reported only after the database write commits.
+
+If AI or database work fails after step 2, the error response includes the `conversation_id` and `message_id`, so the app can show "Try again" in the right chat. After a reload, a last user message without a reply also offers "Try again".
+
+`ask-memory` and `process-memory-input` remain deployed as thin wrappers around the same shared modules for app versions loaded before `process-message`. Direct `talk_messages` inserts from those versions still work and join the login's most recent conversation.
+
+## Capture details
+
+When audio is used, `transcribe-audio` creates a text-only capture request, checks a per-account rate limit, sends the in-memory audio to OpenAI, stores the returned original transcript, and returns editable text. The recording itself is never persisted. The transcription request ID becomes the chat message's `client_message_id`, and an edited transcript keeps the original words in the message `metadata.original_text`.
+
+Zod validates the model output. The capture request stores the validated interpretation, original transcript, corrected text, and people tags (names matched in the words plus exact directory matches the model reported). The RPCs derive the household from the user's profile and recheck record permissions. The model never receives a database credential and never writes SQL. It cannot select a household ID or invent a person ID.
 
 ## Family Activity
 
@@ -33,9 +46,9 @@ Chinna's Family Activity page requires a verified TOTP factor and an `aal2` sess
 
 ## Ask and retrieval
 
-`ask-memory` searches memories, latest item locations, accessible lists, and accessible events through the authenticated user's client. RLS filters every query. Each account's conversation is saved in `talk_messages` and is readable only by that account. Follow-up questions may include up to four recent turns so the model can resolve references, but only retrieved family records count as evidence. Candidate rows are ranked locally and at most twelve records are passed to the model. The model returns a structured answer with source IDs. The Edge Function discards any answer whose citations are absent or outside the retrieved records.
+`ask-memory` searches memories, latest item locations, accessible lists, and accessible events through the authenticated user's client. RLS filters every query. Chats are readable only by the login that owns them. Up to twelve recent turns of the current conversation help the model resolve references, but only retrieved family records count as evidence. Questions that name a calendar period (today, tomorrow, this/next week, this/next month, and Telugu equivalents) query events overlapping that household-local period directly. Candidate rows are ranked locally and at most twelve records are passed to the model. The model returns a structured answer with source IDs. The Edge Function discards any answer whose citations are absent or outside the retrieved records.
 
-This first release uses Unicode token and substring matching, not embeddings. It keeps retrieval bounded and avoids sending the household's entire memory table to OpenAI. A later semantic search would need measured retrieval tests before adding embeddings or `pgvector`.
+Retrieval still uses Unicode token and substring matching, not embeddings. It keeps retrieval bounded and avoids sending the household's entire memory table to OpenAI. Stage 2 of the master specification adds rolling summaries, shared family memories and pgvector search, with measured Telugu/English retrieval tests.
 
 ## Time and events
 

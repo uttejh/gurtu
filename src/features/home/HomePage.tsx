@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
-import { CalendarBlank, ChatCircle, ClockCounterClockwise, ListBullets, NotePencil } from '@phosphor-icons/react';
+import { CalendarBlank, ChatCircle, ChatsCircle, ClockCounterClockwise, ListBullets, NotePencil, Plus } from '@phosphor-icons/react';
 import { Link } from 'react-router-dom';
 import { LogoutButton } from '../../components/LogoutButton';
 import { Brand } from '../../components/Brand';
 import { StatusMessage } from '../../components/StatusMessage';
 import { formatEventTime, isEventVisibleAt, nextEventBoundary, relativeEventDay } from '../../lib/events';
 import { supabase } from '../../lib/supabase';
+import { formatChatTime } from '../../lib/talk';
+import { useRecentConversations } from '../shared/useRecentConversations';
 
 interface HomeEvent {
   id: string;
@@ -62,6 +64,8 @@ export function HomePage({ preview = false }: { preview?: boolean }) {
   const [now, setNow] = useState(() => new Date());
   const [loading, setLoading] = useState(!preview && Boolean(supabase));
   const [loadFailed, setLoadFailed] = useState(false);
+  const { conversations } = useRecentConversations(5, !preview);
+  const latest = conversations[0];
 
   const loadEvents = useCallback(async () => {
     if (preview || !supabase) {
@@ -125,11 +129,37 @@ export function HomePage({ preview = false }: { preview?: boolean }) {
 
       <section className="home-actions" aria-labelledby="home-heading">
         <h2 id="home-heading">What would you like to do?</h2>
-        <Link className="home-action" to="/talk">
-          <ChatCircle className="home-action__icon" aria-hidden="true" weight="regular" />
-          <span className="home-action__title">Talk to Gurtu</span>
-          <span className="home-action__description">Tell me something, ask a question, update a list or add an event.</span>
-        </Link>
+        <div className="home-chat-actions">
+          <Link className="home-chat-action home-chat-action--primary" to="/talk">
+            <Plus aria-hidden="true" weight="bold" />
+            <span>New chat</span>
+          </Link>
+          {latest ? (
+            <Link className="home-chat-action" to={`/talk/${latest.id}`}>
+              <ChatCircle aria-hidden="true" />
+              <span>Continue chat<small>{latest.title}</small></span>
+            </Link>
+          ) : null}
+        </div>
+        <p className="home-chat-hint">Tell Gurtu something, ask a question, update a list or add an event.</p>
+        {conversations.length > 1 ? (
+          <div className="recent-chats" aria-labelledby="recent-chats-heading">
+            <div className="section-heading-row recent-chats__heading">
+              <h3 id="recent-chats-heading">Recent chats</h3>
+              <Link className="section-link" to="/chats">All chats</Link>
+            </div>
+            <ul className="chat-list">
+              {conversations.slice(1).map((conversation) => (
+                <li key={conversation.id}>
+                  <Link className="chat-row" to={`/talk/${conversation.id}`}>
+                    <span className="chat-row__title">{conversation.title}</span>
+                    <time className="chat-row__time" dateTime={conversation.last_activity_at}>{formatChatTime(conversation.last_activity_at)}</time>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
       </section>
 
       <section className="upcoming-section" aria-labelledby="upcoming-heading">
@@ -149,6 +179,7 @@ export function HomePage({ preview = false }: { preview?: boolean }) {
         <Link to="/lists"><ListBullets aria-hidden="true" /> <span>Our lists</span></Link>
         <Link to="/memories"><NotePencil aria-hidden="true" /> <span>Memories</span></Link>
         <Link to="/history"><ClockCounterClockwise aria-hidden="true" /> <span>History</span></Link>
+        <Link to="/chats"><ChatsCircle aria-hidden="true" /> <span>All chats</span></Link>
       </nav>
     </main>
   );

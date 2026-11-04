@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(70);
+select plan(73);
 
 insert into auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at)
 values
@@ -119,10 +119,18 @@ select is((select count(*)::int from public.list_household_access), 1, 'administ
 select is((select count(*)::int from public.event_people), 1, 'administrator at AAL2 reads event person associations');
 select is((select count(*)::int from public.event_household_access), 1, 'administrator at AAL2 reads event sharing relationships');
 select is((select count(*)::int from public.activity_log), 3, 'administrator at AAL2 reviews activity across all households');
-select is((select count(*)::int from public.capture_requests), 4, 'administrator at AAL2 reviews captures from all households');
+select is((select count(*)::int from public.get_admin_family_activity()), 4, 'administrator at AAL2 reviews captures from all households');
+select throws_ok(
+  $$select count(*) from public.capture_requests$$,
+  '42501', 'permission denied for table capture_requests', 'capture rows are only readable through the privacy-preserving functions'
+);
 select is((select count(*)::int from public.admin_audit_log), 1, 'administrator at AAL2 can review the admin audit trail');
-select is((select count(*)::int from public.capture_requests where id = 'a0000000-0000-4000-8000-000000000002' and processing_status = 'operation_failed' and original_transcript = 'Create a shopping list with rice, sugar and oil.'), 1, 'a failed operation remains available with its original transcript');
-select is((select original_transcript || ' / ' || corrected_transcript from public.capture_requests where id = 'a0000000-0000-4000-8000-000000000001'), 'Remember this for Mum. / Remember this for Mom.', 'the original and corrected transcripts remain distinct');
+select is((select count(*)::int from public.get_admin_family_activity() where id = 'a0000000-0000-4000-8000-000000000002' and processing_status = 'operation_failed'), 1, 'a failed operation remains available for administrator review');
+select throws_ok(
+  $$select original_transcript from public.get_admin_family_activity()$$,
+  '42703', null, 'administrator activity review does not expose original transcripts'
+);
+select is((select count(*)::int from public.get_own_capture_requests() where id = 'a0000000-0000-4000-8000-000000000001'), 0, 'administrator cannot read another account transcript through the owner function');
 select throws_ok(
   $$select * from private.global_administrators$$,
   '42501', 'permission denied for table global_administrators', 'administrator role storage is not directly readable'
@@ -152,7 +160,7 @@ select set_config('request.jwt.claims', '{"sub":"10000000-0000-4000-8000-0000000
 select is((select count(*)::int from public.memories), 1, 'second account in a household shares that household memory view');
 select is((select count(*)::int from public.lists), 2, 'recipient sees its own list and the one explicitly shared list');
 select is((select count(*)::int from public.list_items), 4, 'recipient sees items in its own list and the explicitly shared list');
-select is((select count(*)::int from public.capture_requests), 0, 'Ash cannot read another account capture from the same household');
+select is((select count(*)::int from public.get_own_capture_requests()), 0, 'Ash cannot read another account capture from the same household');
 select is((select count(*)::int from public.admin_audit_log), 0, 'Ash cannot read administrative audit records');
 select is((select count(*)::int from public.item_location_history), 0, 'Ash cannot read parents household location history');
 select throws_ok(
@@ -184,25 +192,26 @@ select is((select count(*)::int from public.lists), 2, 'the explicitly shared li
 
 select set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-000000000001', true);
 select set_config('request.jwt.claims', '{"sub":"10000000-0000-4000-8000-000000000001","role":"authenticated"}', true);
+select is((select original_transcript || ' / ' || corrected_transcript from public.get_own_capture_requests() where id = 'a0000000-0000-4000-8000-000000000001'), 'Remember this for Mum. / Remember this for Mom.', 'the sender keeps distinct original and corrected transcripts');
 select public.create_gurtu_capture_request('60000000-0000-4000-8000-000000000020', 'text', 'Remember this for Dad.');
-select is((select processing_status || '|' || original_transcript || '|' || corrected_transcript from public.capture_requests where request_id = '60000000-0000-4000-8000-000000000020'), 'received|Remember this for Dad.|Remember this for Dad.', 'typed text is recorded before AI processing');
+select is((select processing_status || '|' || original_transcript || '|' || corrected_transcript from public.get_own_capture_requests() where request_id = '60000000-0000-4000-8000-000000000020'), 'received|Remember this for Dad.|Remember this for Dad.', 'typed text is recorded before AI processing');
 select throws_ok(
   $$select public.update_gurtu_capture_interpretation('60000000-0000-4000-8000-000000000020', 'Changed source text', 'Remember this for Dad.', 'en', 'save_memory', '{"action":"save_memory","summary":"A note","people_mentions":["Dad"]}'::jsonb, array['40000000-0000-4000-8000-000000000002']::uuid[], 'awaiting_confirmation')$$,
-  '42501', 'capture request is not available', 'a caller cannot overwrite the original received transcript'
+  '40001', 'capture not available', 'a caller cannot overwrite the original received transcript'
 );
 select public.update_gurtu_capture_interpretation(
   '60000000-0000-4000-8000-000000000020', 'Remember this for Dad.', 'Remember this for Dad.', 'en', 'save_memory',
   '{"action":"save_memory","summary":"A note","people_mentions":["Dad"]}'::jsonb,
   array['40000000-0000-4000-8000-000000000002']::uuid[], 'awaiting_confirmation'
 );
-select is((select detected_intent || '|' || processing_status || '|' || (selected_person_ids = array['40000000-0000-4000-8000-000000000002']::uuid[])::text from public.capture_requests where request_id = '60000000-0000-4000-8000-000000000020'), 'save_memory|awaiting_confirmation|true', 'validated interpretation and suggested person tags are stored');
+select is((select detected_intent || '|' || processing_status || '|' || (selected_person_ids = array['40000000-0000-4000-8000-000000000002']::uuid[])::text from public.get_own_capture_requests() where request_id = '60000000-0000-4000-8000-000000000020'), 'save_memory|awaiting_confirmation|true', 'validated interpretation and suggested person tags are stored');
 select is(public.confirm_gurtu_capture_operation('60000000-0000-4000-8000-000000000020', 'Remember this for Dad.', array['40000000-0000-4000-8000-000000000002']::uuid[]), true, 'confirmation advances the capture before a database write');
 select public.save_gurtu_memory('Remember this for Dad.', 'en', 'A note', array['40000000-0000-4000-8000-000000000002']::uuid[], '60000000-0000-4000-8000-000000000020');
 select is(public.finish_gurtu_capture('60000000-0000-4000-8000-000000000020', 'memory', (select id from public.memories where request_id = '60000000-0000-4000-8000-000000000020')), true, 'successful database writes finish their capture with a result');
-select is((select processing_status || '|' || result_entity_type from public.capture_requests where request_id = '60000000-0000-4000-8000-000000000020'), 'succeeded|memory', 'capture stores the completed result type');
+select is((select processing_status || '|' || result_entity_type from public.get_own_capture_requests() where request_id = '60000000-0000-4000-8000-000000000020'), 'succeeded|memory', 'capture stores the completed result type');
 select public.create_gurtu_capture_request('60000000-0000-4000-8000-000000000021', 'text', 'Remember an unavailable note.');
 select is(public.fail_gurtu_capture('60000000-0000-4000-8000-000000000021', 'interpretation_failed', 'INTERPRETATION_FAILED', 'Gurtu could not prepare a safe interpretation.'), true, 'interpretation failure stays attached to its capture');
-select is((select processing_status || '|' || error_code from public.capture_requests where request_id = '60000000-0000-4000-8000-000000000021'), 'interpretation_failed|INTERPRETATION_FAILED', 'failed captures preserve a safe status and error code');
+select is((select processing_status || '|' || error_code from public.get_own_capture_requests() where request_id = '60000000-0000-4000-8000-000000000021'), 'interpretation_failed|INTERPRETATION_FAILED', 'failed captures preserve a safe status and error code');
 
 select * from finish();
 rollback;
