@@ -46,9 +46,23 @@ Chinna's Family Activity page requires a verified TOTP factor and an `aal2` sess
 
 ## Ask and retrieval
 
-`ask-memory` searches memories, latest item locations, accessible lists, and accessible events through the authenticated user's client. RLS filters every query. Chats are readable only by the login that owns them. Up to twelve recent turns of the current conversation help the model resolve references, but only retrieved family records count as evidence. Questions that name a calendar period (today, tomorrow, this/next week, this/next month, and Telugu equivalents) query events overlapping that household-local period directly. Candidate rows are ranked locally and at most twelve records are passed to the model. The model returns a structured answer with source IDs. The Edge Function discards any answer whose citations are absent or outside the retrieved records.
+Questions go through `_shared/ask.ts` with the authenticated user's client, so RLS filters every query.
 
-Retrieval still uses Unicode token and substring matching, not embeddings. It keeps retrieval bounded and avoids sending the household's entire memory table to OpenAI. Stage 2 of the master specification adds rolling summaries, shared family memories and pgvector search, with measured Telugu/English retrieval tests.
+1. Calendar questions that name a period (today, tomorrow, this/next week, this/next month, and Telugu equivalents) query events overlapping that household-local period directly.
+2. Telugu-script questions are first rewritten as an English search query (`gurtu_search_query`, reasoning effort `none`, about 1.3 s).
+3. Retrieval runs in parallel: keyword matching over memories, item locations, lists and events, and hybrid household recall (`match_gurtu_family_memories`: pgvector cosine similarity on English text plus full-text match, fused by rank).
+4. One grounded answer call receives at most fourteen records, the recent turns and the conversation summary. It answers in the user's language, keeps plans distinct from completed actions, and cites record IDs. Answers that claim a family fact without valid citations are replaced with an honest "not found". When nothing answers a family question, the same call may help with any general part.
+
+An English question with no retrieved records at all gets one query rewrite and a second retrieval pass, since it may be Romanised Telugu. Summaries and recent turns resolve references, but only retrieved records count as evidence.
+
+## Shared family recall
+
+Each conversation keeps a rolling English summary (`conversations.summary_en`) with a version number and a cursor (`summary_through_message_id`, `summary_through_at`). `family_memories` holds what Gurtu can recall across chats in a household:
+
+- `saved_memory` rows: the English interpretation and embedding of a saved `memories` row, keeping the original words.
+- `conversation` rows: durable facts, plans, decisions and completed actions a family member stated in a chat, as one English sentence each, with who shared it, when, tagged people, optional occurrence dates with precision, and source message IDs. The chat text itself is not copied.
+
+Triggers queue work in `memory_index_jobs` when a reply or a memory is saved. After `process-message` replies, it processes up to two of the caller's own jobs in the background (`EdgeRuntime.waitUntil`). A conversation job sends the previous summary, up to thirty new messages, twelve recent household memories and the family directory to one extraction call (`gurtu_conversation_memory`, reasoning effort `low`). The result is validated in code: memories must come from the family member's own non-question messages; dates must be real; update targets must be among the supplied memories. Embeddings use `text-embedding-3-small` at 1536 dimensions. `apply_gurtu_conversation_index` then writes the summary, the new memories and status updates (an older plan becomes `completed` or `superseded`, with a link) in one transaction, guarded by the summary version. A failed job stays queued and is retried on the user's next message. Original messages are never changed.
 
 ## Time and events
 

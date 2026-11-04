@@ -44,3 +44,7 @@ After production setup, make a logical export of the `public` schema and its dat
 - OpenAI answers depend on the retrieval terms and up to twelve matching records; Telugu tokenization and mixed-language synonym matching need family testing.
 - Production CORS, Auth redirect URLs, public sign-up settings, and custom domain values must be set once the Pages URL is known.
 - A Supabase Free project currently has no automatic backup and may pause after a week of inactivity. Assess current platform limits and the family's recovery needs before launch.
+
+## Shared family recall
+
+Family members are told in the chat screen that useful facts from their chats, but not the chats themselves, are shared with their household. Chat-derived `family_memories` rows store an English interpretation and source message IDs; other household members can read the fact but not the messages it came from. Recall is household-scoped by RLS, including for the global administrator, and the vector search function runs with the caller's permissions. Indexing jobs can be claimed and applied only by the login that owns them. Person and source IDs proposed by the model are filtered to the caller's family and conversation in the database.

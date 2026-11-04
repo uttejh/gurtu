@@ -14,11 +14,20 @@ import { detectLanguage, executeCapture, interpretCapture, loadOwnCapture, type 
 import { conversationTitle, parseMessageRequest, type MessageRequest } from '../_shared/conversation.ts';
 import { HttpError, readJson, withRequest, type RequestContext } from '../_shared/http.ts';
 import { isQuestion } from '../_shared/intent.ts';
+import { processIndexJobs } from '../_shared/memory.ts';
 import { cancelledMessage, confirmedMessage, deleteEventQuestion, isTeluguText, removalQuestion, successMessage, type ReplyProposal } from '../_shared/replies.ts';
 
 const MESSAGE_COLUMNS = 'id,conversation_id,role,content,result_type,result_id,sources,created_at,client_message_id,reply_to_message_id,input_type,metadata';
 const CONTEXT_TURNS = 12;
 const RESUMABLE = ['awaiting_confirmation', 'operation_pending', 'operation_failed', 'succeeded'];
+
+declare const EdgeRuntime: { waitUntil(promise: Promise<unknown>): void } | undefined;
+
+/** Runs summary and recall indexing after the response is sent. Failures stay queued for retry. */
+function indexInBackground(context: RequestContext) {
+  const work = processIndexJobs(context, 2).catch(() => undefined);
+  if (typeof EdgeRuntime !== 'undefined' && EdgeRuntime?.waitUntil) EdgeRuntime.waitUntil(work);
+}
 
 type ResultType = 'memory' | 'list' | 'event' | 'answer';
 interface MessageRow {
@@ -109,11 +118,16 @@ function savedReply(text: string, proposal: ActionProposal, result: ExecuteResul
 }
 
 /** Works out the reply for a saved user message. Safe to repeat for the same message. */
+async function conversationSummary(context: RequestContext, conversationId: string): Promise<string | null> {
+  const { data } = await context.supabase.from('conversations').select('summary_en').eq('id', conversationId).maybeSingle();
+  return typeof data?.summary_en === 'string' && data.summary_en.trim() ? data.summary_en : null;
+}
+
 async function respondTo(context: RequestContext, message: MessageRow): Promise<Reply> {
   const text = message.content;
-  const turns = await timed('load_context', () => recentTurns(context, message));
+  const [turns, summary] = await timed('load_context', () => Promise.all([recentTurns(context, message), conversationSummary(context, message.conversation_id)]));
   if (isQuestion(text)) {
-    const result = await timed('answer_question', () => answerQuestion(context, text, turns));
+    const result = await timed('answer_question', () => answerQuestion(context, text, turns, summary));
     return { content: result.answer, result_type: 'answer', sources: result.sources, metadata: { kind: 'answer', found: result.found } };
   }
 
@@ -138,6 +152,7 @@ async function respondTo(context: RequestContext, message: MessageRow): Promise<
       originalText,
       correctedText: text,
       conversationContext: turns,
+      conversationSummary: summary,
     })));
   }
 
@@ -182,6 +197,7 @@ async function handleSend(context: RequestContext, request: Extract<MessageReque
     const existingReply = started.created ? null : await loadReply(context, userMessage.id);
     const reply = existingReply ?? await saveReply(context, userMessage.id, await respondTo(context, userMessage));
     const conversation = await loadConversation(context, started.conversation_id);
+    indexInBackground(context);
     return { conversation, user_message: userMessage, reply };
   } catch (cause) {
     // The words are saved; tell the client where, so "Try again" resumes this message.
@@ -215,6 +231,7 @@ async function handleConfirmation(context: RequestContext, request: Extract<Mess
     };
   }
   const saved = await saveReply(context, question.id, reply);
+  indexInBackground(context);
   return { conversation: await loadConversation(context, question.conversation_id), reply: saved };
 }
 

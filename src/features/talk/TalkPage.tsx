@@ -189,7 +189,7 @@ export function TalkPage() {
     <PageLayout backTo="/" headerAction={conversation ? <Link className="quiet-link talk-new-chat" to="/talk"><Plus aria-hidden="true" /> New chat</Link> : null}>
       <h2 className="talk-title" title={title}>{title}</h2>
       <section className="talk-section" aria-label="Conversation with Gurtu">
-        <p className="talk-privacy-note">This chat is private to your login. Anything you save becomes part of your family records.</p>
+        <p className="talk-privacy-note">This chat is private to your login. Useful facts from it, not the chat itself, are shared with your household so Gurtu can recall them in other chats.</p>
         <div className="talk-messages" aria-live="polite">
           {loading ? <p className="muted-copy">Loading your chat…</p> : null}
           {loadError ? <StatusMessage tone="error">{loadError}</StatusMessage> : null}

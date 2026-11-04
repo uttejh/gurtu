@@ -1,6 +1,6 @@
 export interface AskEvidence {
   id: string;
-  kind: 'memory' | 'item location' | 'list' | 'calendar event';
+  kind: 'memory' | 'item location' | 'list' | 'calendar event' | 'family conversation';
   created_at: string;
   content: string;
 }

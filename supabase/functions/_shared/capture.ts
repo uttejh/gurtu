@@ -6,9 +6,9 @@ import { consumeLimit, HttpError, type RequestContext } from './http.ts';
 import { findPeopleMentioned } from './people.ts';
 import { openAIJson } from './openai.ts';
 
-type PersonRow = { id: string; display_name: string; aliases: string[]; home_household_id: string; households?: { timezone?: string } | null };
+export type PersonRow = { id: string; display_name: string; aliases: string[]; home_household_id: string; households?: { timezone?: string } | null };
 
-async function loadFamilyPeople(context: RequestContext): Promise<PersonRow[]> {
+export async function loadFamilyPeople(context: RequestContext): Promise<PersonRow[]> {
   const startedAt = performance.now();
   const { data, error } = await context.supabase.from('people')
     .select('id,display_name,aliases,home_household_id,households(timezone)')
@@ -303,6 +303,8 @@ export interface InterpretInput {
   originalText: string;
   correctedText: string;
   conversationContext: Array<{ role: 'user' | 'assistant'; content: string }>;
+  /** The conversation's rolling English summary, when one exists. */
+  conversationSummary?: string | null;
 }
 
 export interface CaptureRecord {
@@ -356,7 +358,7 @@ export async function interpretCapture(context: RequestContext, input: Interpret
       name: 'gurtu_memory_action',
       schema: ActionOutputSchema,
       instructions: INTERPRET_INSTRUCTIONS(currentLocalDate, currentTime, context.profile.timezone, personHint(people), calendarHints),
-      userContent: JSON.stringify({ message: input.correctedText, recent_conversation: input.conversationContext }),
+      userContent: JSON.stringify({ message: input.correctedText, recent_conversation: input.conversationContext, ...(input.conversationSummary ? { conversation_summary: input.conversationSummary } : {}) }),
       maxOutputTokens: 1600,
     });
     const proposal = validateProposal(raw);
